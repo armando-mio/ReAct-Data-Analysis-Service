@@ -87,13 +87,28 @@ If generated code raises an error (e.g. `KeyError`, `ValueError`, `TypeError`), 
 
 ## 3. Key Design Decisions
 
-| Decision | Rationale |
-| :--- | :--- |
-| **Hexagonal Architecture** | Isolates business analysis logic from framework and database details. Enables 100% deterministic unit testing via `MockLLMAdapter` without network or API costs. |
-| **SQLite with SQLAlchemy 2.0** | Zero memory overhead, in-process, ACID-compliant, requires no extra container daemon, and supports multi-turn session resumption across service restarts. |
-| **Subprocess Sandbox with Network Neutralization** | Untrusted code executes in an isolated `tempfile.TemporaryDirectory` with strict timeout kills (15s default). Sockets (`connect`, `create_connection`, `urllib`, `http.client`) are patched at startup to raise `PermissionError`, preventing data exfiltration. |
-| **LangGraph StateGraph** | Explicit state persistence with declarative conditional edge routing for the self-healing recovery loop and bounded iteration limits. |
-| **Plotly HTML Visualizations** | Visualizations are generated as self-contained standalone HTML documents (`include_plotlyjs="cdn"`) streamed directly via `GET /artifacts/{id}`. |
+### A. Datastore Choice: SQLite with SQLAlchemy 2.0
+- **Why SQLite?**
+  - **Zero Daemon Overhead**: Unlike PostgreSQL or MySQL, SQLite runs entirely in-process, eliminating background database containers and saving memory (crucial for resource-constrained 1024MB environments).
+  - **ACID Compliance & Multi-Turn Resumption**: Provides full transactional integrity across sessions, messages, traces, and artifacts. Sessions persist across server restarts and container recreations via persistent volume mounts.
+  - **Simplicity & Portability**: The single `.db` file can be backed up, inspected, or tested with zero external configuration.
+
+### B. API Contract Design
+- **Why Multipart `POST /analyze`?**
+  - Allows transmitting an analytical question and a CSV dataset file in a single atomic HTTP request without requiring pre-upload orchestration.
+  - Supports optional `session_id` to chain conversational turns on an existing dataset.
+  - Returns a unified JSON payload containing the natural language answer, interactive artifact links (`/artifacts/{id}`), and the step-by-step reasoning trace.
+- **RESTful Resource Access**:
+  - `GET /sessions/{id}` retrieves historical context, messages, and all generated artifacts.
+  - `GET /artifacts/{id}` streams raw Plotly HTML directly with `media_type="text/html"`, enabling in-browser visual rendering.
+
+### C. Sandbox Isolation Strategy
+- **Why Process-Level Isolation with Network Neutralization?**
+  - **Pragmatic & Lightweight**: Spawning a separate Python subprocess per step in a clean `tempfile.TemporaryDirectory()` avoids the complexity, latency, and privileges required for Docker-in-Docker or VM-level sandboxing.
+  - **Timeout Kill**: Enforces a strict 15-second execution timeout. If exceeded, the entire subprocess tree is terminated (`SandboxTimeoutError`), preventing infinite loops or CPU exhaustion.
+  - **Filesystem Isolation**: Code executes inside an isolated temporary directory; input datasets are copied locally so host files cannot be overwritten.
+  - **Network Guard**: Socket calls (`connect`, `create_connection`, `urllib.request`, `http.client`) are monkey-patched at the subprocess bootstrap level to raise `PermissionError`, preventing external data exfiltration.
+
 
 ---
 
@@ -208,10 +223,29 @@ python -m pytest -v
 - **Integration (`tests/integration/`)**: Subprocess timeout kill (1.5s enforcement), network guard neutralization (blocking `socket` and `urllib`), filesystem isolation, Plotly HTML extraction, and SQLite session persistence.
 - **E2E (`tests/e2e/`)**: FastAPI `TestClient` verifying multipart CSV upload, `/analyze` response schema, `/sessions/{id}`, and `/artifacts/{id}` HTML streaming.
 
+### Strategy for Testing Non-Deterministic LLM Components
+To ensure 100% test reliability and zero flakiness in production CI/CD:
+1. **Hexagonal Port Decoupling**: The core domain and LangGraph use cases interact exclusively with the abstract `ILLMClient` port, never importing concrete vendor SDKs.
+2. **Deterministic Mocking (`MockLLMAdapter`)**: Replaces external LLM calls with scripted plans, code snippets, evaluations, and summaries. This allows testing edge cases (e.g. syntax errors, `KeyError` recovery, maximum iteration limits) deterministically without network latency, API costs, or quota throttling.
+3. **Contract and Schema Invariance**: Tests assert on architectural invariants (state machine node transitions, structured trace step shapes, JSON schemas, and valid HTML output) rather than asserting on exact natural language phrasing.
+4. **Isolated Security Guarantees**: Sandbox safety tests (execution timeout kill, socket blocking, and filesystem confinement) execute actual Python subprocesses with real injected guards, verifying security independently of LLM outputs.
+
 ---
 
-## 8. Known Limitations & Future Improvements
+## 8. Deliverables Included
+
+1. **Complete Source Code**: Hexagonal Architecture layout under `data_agent/` (Core, Ports, Use Cases, Adapters, API).
+2. **README Documentation**: Full architectural diagrams, key design justifications, and test/run guides.
+3. **Example Plotly HTML Output**: Pre-generated interactive chart saved at [`examples/example_plot.html`](examples/example_plot.html).
+4. **Sample Dataset**: Clean transactional CSV dataset at [`data/sample_sales.csv`](data/sample_sales.csv).
+5. **Docker Infrastructure**: [`Dockerfile`](Dockerfile) and [`docker-compose.yml`](docker-compose.yml).
+6. **Automated Test Suite**: 14 tests in `tests/` covering unit, integration, and E2E.
+
+---
+
+## 9. Known Limitations & Future Improvements
 
 1. **Multi-File Datasets**: Current implementation mounts a single primary tabular dataset per session. Future work could support zip archives with multi-table relational schema joins.
 2. **Containerized Worker Pools**: For extreme enterprise untrusted code execution, process-level isolation can be upgraded to microVM-based sandboxes (e.g. Firecracker or gVisor) alongside the current network neutralization.
 3. **Streaming Trace Updates**: Add Server-Sent Events (SSE) or WebSockets to stream reasoning steps and stdout in real-time as the agent iterates through the ReAct loop.
+
