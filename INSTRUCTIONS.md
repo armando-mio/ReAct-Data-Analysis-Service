@@ -149,3 +149,28 @@ As required by deliverable **#3**, a pre-generated standalone Plotly HTML visual
 👉 [`examples/example_plot.html`](examples/example_plot.html)
 
 Open it directly in any browser to inspect the interactive features (tooltips, zoom, pan, hover states).
+
+---
+
+## 6. Run the DSPy + GEPA Prompt Optimization Benchmark (Stretch Bonus)
+
+To evaluate and optimize the agent's reasoning prompts using **DSPy 3.4** and **GEPA (Generalized Evolutionary Prompt Adaptation)**:
+
+### A. Run Deterministic Mock Benchmark (Fast / CI / Offline):
+```bash
+python -m data_agent.optimization.optimizer --mock
+```
+*Expected output*: Evaluates baseline prompts vs GEPA-evolved prompts on the 5 curated dev set questions, demonstrating a performance jump from **65.0%** to **100.0%** (+53.9% relative improvement) and saving the benchmark report.
+
+### B. Run Live Prompt Optimization with Gemini:
+```bash
+python -m data_agent.optimization.optimizer --max-calls 10
+```
+
+### C. Run the Dedicated DSPy & GEPA Test Suite:
+```bash
+python -m pytest tests/unit/test_dspy_modules.py tests/integration/test_dspy_optimization.py -v
+```
+
+### D. Inspect Pre-computed Benchmark Deliverable:
+👉 [`examples/gepa_optimization_report.json`](examples/gepa_optimization_report.json)
