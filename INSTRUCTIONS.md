@@ -126,7 +126,7 @@ A sample transactional dataset with 50 rows and 4 columns is provided at [`data/
 
 ```bash
 curl -X POST "http://localhost:8000/analyze" \
-  -F "question=Quale categoria ha generato il maggior fatturato totale?" \
+  -F "question=Which category generated the highest total revenue?" \
   -F "file=@data/sample_sales.csv"
 ```
 

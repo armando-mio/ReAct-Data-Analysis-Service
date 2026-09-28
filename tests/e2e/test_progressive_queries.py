@@ -7,30 +7,30 @@ from fastapi.testclient import TestClient
 
 PROGRESSIVE_QUERIES = [
     # Tier 1: Basic Retrieval & Aggregations
-    (1, "Quante righe totali ci sono nel dataset e qual è il fatturato complessivo?"),
-    (2, "Qual è la classifica delle categorie ordinate per fatturato totale decrescente?"),
-    (3, "Qual è il numero totale di unità vendute e il ricavo medio per la sola categoria Electronics?"),
-    (4, "In quale data si è verificata la singola vendita con il ricavo più alto e di quale categoria si trattava?"),
+    (1, "How many total rows are in the dataset and what is the overall total revenue?"),
+    (2, "What is the ranking of categories ordered by total revenue descending?"),
+    (3, "What is the total units sold and average revenue for the Electronics category only?"),
+    (4, "On which date did the single highest-revenue sale occur, and which category was it?"),
     # Tier 2: Computed Metrics & Date Filtering
-    (5, "Calcola il prezzo medio per unità venduta per ciascuna categoria e dimmi quale categoria ha il prezzo medio unitario più elevato."),
-    (6, "Confronta il fatturato totale delle prime due settimane di gennaio con le ultime due settimane di gennaio 2024."),
-    (7, "Quale percentuale del fatturato totale è rappresentata dalle prime due categorie? C'è una concentrazione stile Pareto?"),
-    (8, "In quali giorni della settimana (es. Lunedì, Martedì, ecc.) si concentra il maggior fatturato?"),
+    (5, "Calculate the average price per unit sold for each category and identify which category has the highest average unit price."),
+    (6, "Compare total revenue between the first two weeks of January and the last two weeks of January 2024."),
+    (7, "What percentage of total revenue is represented by the top two categories? Is there a Pareto-style concentration?"),
+    (8, "On which days of the week (e.g. Monday, Tuesday, etc.) is the highest revenue concentrated?"),
     # Tier 3: Statistical Distributions & Moving Windows
-    (9, "Identifica eventuali transazioni anomale o outlier nel Revenue utilizzando l'Interquartile Range (IQR con soglia 1.5). Quali sono?"),
-    (10, "Calcola la correlazione tra Units_Sold e Revenue per ciascuna categoria. In quali categorie la relazione è più forte o più debole?"),
-    (11, "Calcola la media mobile a 7 giorni del fatturato giornaliero ed elenca le date in cui il fatturato reale ha superato la media mobile di almeno il 40%."),
-    (12, "Mostra come è cambiata la quota percentuale cumulata delle categorie giorno per giorno nel corso del mese."),
+    (9, "Identify any anomalous transactions or outliers in Revenue using the Interquartile Range (IQR with 1.5 threshold). Which ones are they?"),
+    (10, "Calculate the correlation between Units_Sold and Revenue for each category. In which categories is the relationship strongest or weakest?"),
+    (11, "Compute a 7-day rolling average of daily revenue and list the dates where actual revenue exceeded the rolling average by at least 40%."),
+    (12, "Show how the cumulative percentage share of categories evolved day by day across the month."),
     # Tier 4: Trend Modeling & Complex Segmentation
-    (13, "Determina la pendenza del trend giornaliero delle vendite (regressione lineare) e proietta una stima del fatturato per i successivi 7 giorni."),
-    (14, "Calcola l'indice di Gini della distribuzione del fatturato per misurare il livello di disuguaglianza tra le singole transazioni."),
-    (15, "Segmenta le transazioni in 4 quadranti basandoti sulla mediana di Units_Sold e del Prezzo Unitario (es. Alto Volume/Alto Prezzo, Alto Volume/Basso Prezzo, ecc.). Quante transazioni ricadono in ciascun quadrante?"),
-    (16, "Calcola il margine netto ipotizzando che la colonna Cost sia pari al 60% del Revenue per l'elettronica e al 40% per le altre categorie. Qual è il profitto stimato?"),
+    (13, "Determine the slope of the daily sales trend (linear regression) and project a revenue estimate for the next 7 days."),
+    (14, "Calculate the Gini coefficient of the revenue distribution to measure inequality across individual transactions."),
+    (15, "Segment transactions into 4 quadrants based on the median of Units_Sold and Unit Price (e.g. High Volume/High Price, High Volume/Low Price, etc.). How many transactions fall into each quadrant?"),
+    (16, "Calculate net profit assuming the Cost column is 60% of Revenue for Electronics and 40% for other categories. What is the estimated total profit?"),
     # Tier 5: Edge Cases, Self-Healing & Unsupervised
-    (17, "Mostrami l'andamento delle vendite della categoria Automotive, e se non esiste spiegami quali categorie coprono volumi simili."),
-    (18, "Calcola la variazione percentuale (Pct Change) del fatturato tra giorni consecutivi per ogni singola categoria separatamente, gestendo esplicitamente i valori nulli o infiniti."),
-    (19, "Esegui una simulazione Bootstrap a 1000 iterazioni per stimare l'intervallo di confidenza al 95% del fatturato medio giornaliero e calcola il Value at Risk (VaR 95%)."),
-    (20, "Esegui un clustering K-Means (k=3) su Units_Sold e Revenue dopo averli standardizzati con z-score. Riporta le coordinate dei 3 centroidi, il numero di campioni per cluster e spiega cosa caratterizza ciascun cluster."),
+    (17, "Show the sales performance for the Automotive category, and if it does not exist, explain which existing categories cover similar volumes."),
+    (18, "Calculate the percentage change (Pct Change) in revenue between consecutive days for each category separately, explicitly handling null or infinite values."),
+    (19, "Run a 1000-iteration bootstrap simulation to estimate the 95% confidence interval for mean daily revenue and calculate the 95% Value at Risk (VaR)."),
+    (20, "Perform K-Means clustering (k=3) on z-score standardized Units_Sold and Revenue. Report the coordinates of the 3 centroids, sample counts per cluster, and what characterizes each cluster."),
 ]
 
 
