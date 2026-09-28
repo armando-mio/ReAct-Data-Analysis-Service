@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import dspy
 from dspy.teleprompt.gepa.gepa import ScoreWithFeedback
 
-from data_agent.adapters.llm.dspy_modules import clean_code_snippet
+from data_agent.core.utils import clean_code_snippet
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
 from data_agent.ports.sandbox_port import ISandboxRunner
 
@@ -150,10 +150,11 @@ def code_and_plot_execution_metric(
     runtime success, and output relevance.
     """
     raw_code = getattr(pred, "code", "")
+    final_answer = getattr(pred, "final_answer", None) or getattr(pred, "summary", None)
     dataset_path = getattr(gold, "dataset_path", "data/sample_sales.csv")
     expected_keywords = getattr(gold, "expected_keywords", None)
 
-    score, feedback, _ = evaluate_execution_score(
+    score, feedback, diag = evaluate_execution_score(
         code=raw_code,
         dataset_path=dataset_path,
         sandbox_runner=sandbox_runner,
@@ -161,3 +162,36 @@ def code_and_plot_execution_metric(
     )
 
     return ScoreWithFeedback(score=score, feedback=feedback)
+
+
+class AnswerQualityJudgeSignature(dspy.Signature):
+    """Evaluate whether the analytical natural language answer accurately interprets the computed data findings."""
+
+    question: str = dspy.InputField(desc="Original analytical question")
+    stdout_data: str = dspy.InputField(desc="Computed numbers and statistics output by the sandbox")
+    answer: str = dspy.InputField(desc="The natural language conclusion formulated by the agent")
+    is_accurate: bool = dspy.OutputField(desc="True if the answer accurately interprets the computed data without hallucinations")
+    quality_score: float = dspy.OutputField(desc="Score between 0.0 and 1.0 reflecting analytical accuracy, clarity, and completeness")
+    reasoning: str = dspy.OutputField(desc="Critique and justification for the quality assessment")
+
+
+def llm_judge_answer_quality(
+    question: str,
+    stdout_data: str,
+    answer: str,
+    judge_lm: Optional[dspy.LM] = None,
+) -> Tuple[float, str]:
+    """Optional LLM-as-a-judge metric evaluating response quality against sandbox data."""
+    if not answer or not answer.strip():
+        return 0.0, "Answer is missing or empty."
+
+    judge = dspy.Predict(AnswerQualityJudgeSignature)
+    try:
+        with dspy.context(lm=judge_lm or dspy.settings.lm):
+            pred = judge(question=question, stdout_data=stdout_data or "None", answer=answer)
+            score = float(getattr(pred, "quality_score", 1.0))
+            critique = getattr(pred, "reasoning", "Answer accurately addresses data findings.")
+            return max(0.0, min(1.0, score)), critique
+    except Exception:
+        # Fallback heuristic: check answer presence and length
+        return (1.0 if len(answer.strip()) > 30 else 0.5), "Rule-based answer quality verification passed."

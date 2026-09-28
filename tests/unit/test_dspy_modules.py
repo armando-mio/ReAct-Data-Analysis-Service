@@ -136,3 +136,13 @@ def test_dspy_llm_adapter_implements_port():
         artifacts=[Artifact(session_id="s1", file_name="plot.html", storage_path="/path")],
     )
     assert summary_out == "Final synthesized analysis answer."
+
+
+def test_dspy_react_agent_instantiation():
+    """Verify DSPyReActAgent properly configures built-in dspy.ReAct and its execution tools."""
+    from data_agent.adapters.llm.dspy_modules import DSPyReActAgent
+
+    agent = DSPyReActAgent(dataset_path="data/sample_sales.csv")
+    assert hasattr(agent, "react")
+    assert isinstance(agent.react, dspy.ReAct)
+    assert "execute_analysis_code" in agent.react.tools

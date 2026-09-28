@@ -10,19 +10,7 @@ from data_agent.core.exceptions import LLMExecutionError
 from data_agent.ports.llm_port import ILLMClient
 
 
-def clean_code_snippet(raw_text: str) -> str:
-    """Extract and sanitize raw Python code from markdown blocks or backticks."""
-    text = (raw_text or "").strip()
-    pattern = r"```(?:python)?\s*([\s\S]*?)\s*```"
-    matches = re.findall(pattern, text)
-    if matches:
-        return matches[-1].strip()
-    lines = text.splitlines()
-    if lines and lines[0].strip().startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].strip().startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
+from data_agent.core.utils import clean_code_snippet
 
 
 class PlanSignature(dspy.Signature):
@@ -262,3 +250,42 @@ class DSPyLLMAdapter(ILLMClient):
             return getattr(res, "summary", "Analysis completed.")
         except Exception as exc:
             raise LLMExecutionError(f"DSPy summary error: {exc}") from exc
+
+
+class DSPyReActAgent(dspy.Module):
+    """Data analysis agent utilizing built-in dspy.ReAct with secure sandbox execution tool."""
+
+    def __init__(
+        self,
+        sandbox_runner: Optional[Any] = None,
+        dataset_path: Optional[str] = None,
+        max_iters: int = 4,
+    ) -> None:
+        super().__init__()
+        self.sandbox_runner = sandbox_runner
+        self.dataset_path = dataset_path
+
+        def execute_analysis_code(code: str) -> str:
+            """Execute Python analysis script in the isolated sandbox.
+            Reads data from 'dataset.csv' and creates an interactive Plotly HTML visualization via fig.write_html('plot.html').
+            Returns stdout, errors, and generated files.
+            """
+            from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
+            runner = self.sandbox_runner or ProcessSandboxRunner()
+            cleaned = clean_code_snippet(code)
+            res = runner.execute(code=cleaned, dataset_path=self.dataset_path)
+            html_names = [f for f, _ in res.generated_html_files]
+            if not res.is_success:
+                return f"Execution Error: {res.stderr}\nStdout: {res.stdout}"
+            return f"Execution Success!\nStdout: {res.stdout}\nGenerated Plotly HTML Files: {html_names}"
+
+        class ReActAnalysisSignature(dspy.Signature):
+            """Analyze the dataset, compute statistics, generate an interactive Plotly chart, and summarize findings."""
+            question: str = dspy.InputField(desc="Analytical user question")
+            dataset_preview: str = dspy.InputField(desc="Preview and schema of the CSV dataset")
+            analysis_summary: str = dspy.OutputField(desc="Comprehensive answer interpreting findings and citing generated charts")
+
+        self.react = dspy.ReAct(ReActAnalysisSignature, tools=[execute_analysis_code], max_iters=max_iters)
+
+    def forward(self, question: str, dataset_preview: str) -> dspy.Prediction:
+        return self.react(question=question, dataset_preview=dataset_preview)

@@ -21,6 +21,8 @@ from data_agent.core.exceptions import (
     SessionNotFoundError,
 )
 
+from data_agent.core.utils import clean_code_snippet
+
 __all__ = [
     "Session",
     "Message",
@@ -38,4 +40,5 @@ __all__ = [
     "SandboxSecurityError",
     "LLMExecutionError",
     "MaxIterationsReachedError",
+    "clean_code_snippet",
 ]

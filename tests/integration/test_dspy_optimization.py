@@ -144,3 +144,38 @@ def test_prompt_optimization_runner_end_to_end_mock(tmp_path):
     assert len(changed) >= 2
     coder_mutation = next(m for m in changed if m["predictor_name"] == "coder.predict")
     assert "Plotly visualization" in coder_mutation["optimized_instructions"]
+
+
+def test_llm_judge_answer_quality():
+    """Verify optional LLM-as-a-judge answer quality evaluation."""
+    from data_agent.optimization.metrics import llm_judge_answer_quality
+
+    # 1. Non-empty relevant answer
+    score, critique = llm_judge_answer_quality(
+        question="Which category has highest revenue?",
+        stdout_data="Electronics: 14508.62, Clothing: 7767.26",
+        answer="Electronics generated the highest total revenue of $14,508.62.",
+    )
+    assert score > 0.0
+    assert isinstance(critique, str)
+
+    # 2. Empty answer receives 0.0
+    score_empty, critique_empty = llm_judge_answer_quality(
+        question="Which category has highest revenue?",
+        stdout_data="Electronics: 14508.62",
+        answer="",
+    )
+    assert score_empty == 0.0
+    assert "missing" in critique_empty.lower()
+
+
+def test_prompt_optimization_runner_optimizer_choice():
+    """Verify PromptOptimizationRunner supports optimizer selection (gepa, miprov2, bootstrap)."""
+    runner = PromptOptimizationRunner(use_mock=True)
+    report_bootstrap = runner.run_optimization(
+        max_metric_calls=2,
+        dataset_path="data/sample_sales.csv",
+        optimizer_type="bootstrap",
+    )
+    assert "BOOTSTRAP" in report_bootstrap.optimizer_name
+    assert report_bootstrap.optimized_avg_score == 1.0

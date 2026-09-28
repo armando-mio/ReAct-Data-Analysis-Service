@@ -1,6 +1,7 @@
 from data_agent.adapters.llm.dspy_modules import (
     DataAnalysisReActModule,
     DSPyLLMAdapter,
+    DSPyReActAgent,
     PlanSignature,
     CodeGenerationSignature,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "MockLLMAdapter",
     "DSPyLLMAdapter",
     "DataAnalysisReActModule",
+    "DSPyReActAgent",
     "PlanSignature",
     "CodeGenerationSignature",
 ]

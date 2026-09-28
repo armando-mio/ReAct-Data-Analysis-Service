@@ -189,8 +189,9 @@ class PromptOptimizationRunner:
         max_metric_calls: int = 10,
         reflection_minibatch_size: int = 2,
         dataset_path: str = "data/sample_sales.csv",
+        optimizer_type: str = "gepa",
     ) -> OptimizationReport:
-        """Execute full GEPA prompt optimization pipeline with before/after scoring."""
+        """Execute full DSPy prompt optimization pipeline with before/after scoring."""
         start_time = time.time()
         dev_set = get_dev_set(dataset_path=dataset_path)
 
@@ -208,39 +209,53 @@ class PromptOptimizationRunner:
             original_instructions[name] = getattr(pred.signature, "instructions", "")
 
         optimized_student = None
-        optimizer_used = "DSPy GEPA"
+        optimizer_used = f"DSPy {optimizer_type.upper()}"
 
-        # 3. Run GEPA Optimization
-        print("2. Running Reflective Prompt Optimization with GEPA...", flush=True)
+        # 3. Run Optimization
+        print(f"2. Running Reflective Prompt Optimization with {optimizer_type.upper()}...", flush=True)
         if not self.use_mock and self.api_key:
             try:
-                gepa = dspy.GEPA(
-                    metric=code_and_plot_execution_metric,
-                    max_metric_calls=max_metric_calls,
-                    reflection_minibatch_size=reflection_minibatch_size,
-                    candidate_selection_strategy="pareto",
-                    skip_perfect_score=True,
-                    num_threads=1,
-                )
-                # Split dev set into train and validation sets
                 trainset = dev_set[:3]
                 valset = dev_set[3:] if len(dev_set) > 3 else dev_set[:2]
-                optimized_student = gepa.compile(
-                    student=student,
-                    trainset=trainset,
-                    valset=valset,
-                )
-            except Exception as gepa_exc:
-                # Graceful fallback: If GEPA encounters rate limits or formatting errors,
-                # apply targeted prompt refinement directly based on metric feedback
-                optimizer_used = f"DSPy GEPA (Hybrid Refinement: {type(gepa_exc).__name__})"
+
+                if optimizer_type == "bootstrap":
+                    optimizer_used = "DSPy BootstrapFewShot"
+                    teleprompter = dspy.teleprompt.BootstrapFewShot(
+                        metric=code_and_plot_execution_metric,
+                        max_bootstrapped_demos=2,
+                    )
+                    optimized_student = teleprompter.compile(student=student, trainset=trainset)
+                elif optimizer_type == "miprov2":
+                    optimizer_used = "DSPy MIPROv2"
+                    teleprompter = dspy.teleprompt.MIPROv2(
+                        metric=code_and_plot_execution_metric,
+                        auto="light",
+                        num_threads=1,
+                    )
+                    optimized_student = teleprompter.compile(student=student, trainset=trainset, valset=valset)
+                else:
+                    optimizer_used = "DSPy GEPA"
+                    gepa = dspy.GEPA(
+                        metric=code_and_plot_execution_metric,
+                        max_metric_calls=max_metric_calls,
+                        reflection_minibatch_size=reflection_minibatch_size,
+                        candidate_selection_strategy="pareto",
+                        skip_perfect_score=True,
+                        num_threads=1,
+                    )
+                    optimized_student = gepa.compile(
+                        student=student,
+                        trainset=trainset,
+                        valset=valset,
+                    )
+            except Exception as opt_exc:
+                optimizer_used = f"DSPy {optimizer_type.upper()} (Hybrid Refinement: {type(opt_exc).__name__})"
                 optimized_student = self._apply_metric_driven_refinement(student)
         else:
-            # Mock optimization mode for CI
             if isinstance(self.lm, MockOptimizingLM):
                 self.lm.mode = "optimized"
             optimized_student = self._apply_metric_driven_refinement(student)
-            optimizer_used = "DSPy GEPA (Mock CI Engine)"
+            optimizer_used = f"DSPy {optimizer_type.upper()} (Mock CI Engine)"
 
         # 4. Post-Optimization Evaluation
         optimized_score, optimized_details = self.evaluate_module(
@@ -325,14 +340,19 @@ def main():
     """CLI entrypoint for running DSPy + GEPA prompt optimization."""
     parser = argparse.ArgumentParser(description="Run DSPy + GEPA Prompt Optimization for ReAct Data Agent")
     parser.add_argument("--mock", action="store_true", help="Run with deterministic Mock LM for CI/offline testing")
+    parser.add_argument("--optimizer", choices=["gepa", "miprov2", "bootstrap"], default="gepa", help="DSPy optimizer (default: gepa - recommended)")
     parser.add_argument("--max-calls", type=int, default=10, help="Maximum GEPA metric calls (default: 10)")
     parser.add_argument("--dataset", type=str, default="data/sample_sales.csv", help="Path to evaluation dataset")
     parser.add_argument("--output", type=str, default="storage/prompt_optimization_report.json", help="Report output file")
     args = parser.parse_args()
 
-    print(f"Starting DSPy + GEPA Prompt Optimization (Mock: {args.mock})...")
+    print(f"Starting DSPy Prompt Optimization (Optimizer: {args.optimizer.upper()}, Mock: {args.mock})...")
     runner = PromptOptimizationRunner(use_mock=args.mock)
-    report = runner.run_optimization(max_metric_calls=args.max_calls, dataset_path=args.dataset)
+    report = runner.run_optimization(
+        max_metric_calls=args.max_calls,
+        dataset_path=args.dataset,
+        optimizer_type=args.optimizer,
+    )
 
     # Save JSON report
     out_path = Path(args.output)

@@ -78,18 +78,9 @@ class GeminiLLMAdapter(ILLMClient):
         )
 
     def _clean_code(self, raw_text: str) -> str:
-        """Strip markdown code blocks if the LLM wrapped python code."""
-        text = raw_text.strip()
-        pattern = r"^```(?:python)?\s*([\s\S]*?)\s*```$"
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1).strip()
-        lines = text.splitlines()
-        if lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip().startswith("```"):
-            lines = lines[:-1]
-        return "\n".join(lines).strip()
+        """Strip markdown code blocks using core utility."""
+        from data_agent.core.utils import clean_code_snippet
+        return clean_code_snippet(raw_text)
 
     def plan(
         self,
