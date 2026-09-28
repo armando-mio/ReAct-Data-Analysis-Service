@@ -21,7 +21,12 @@ class GeminiLLMAdapter(ILLMClient):
         model_name: Optional[str] = None,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        self.model_name = model_name or os.getenv("GEMINI_MODEL")
+        if not self.model_name:
+            raise LLMExecutionError(
+                "GEMINI_MODEL environment variable is not configured. "
+                "Please define GEMINI_MODEL in your .env file."
+            )
         self._client = None
         self._fallback = MockLLMAdapter()
 
@@ -40,34 +45,29 @@ class GeminiLLMAdapter(ILLMClient):
         return self._client
 
     def _call_generate_content(self, prompt: str, max_retries: int = 2) -> Optional[str]:
-        """Call Gemini models.generate_content with exponential backoff and fallback on transient errors."""
+        """Call Gemini models.generate_content using the configured model from environment variables."""
         try:
             client = self._get_client()
         except Exception:
             return None
 
-        models_to_try = [self.model_name]
-        for fallback in ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"]:
-            if fallback not in models_to_try:
-                models_to_try.append(fallback)
-
-        for model in models_to_try:
-            for attempt in range(max_retries):
-                try:
-                    response = client.models.generate_content(
-                        model=model,
-                        contents=prompt,
-                    )
-                    if response.text and response.text.strip():
-                        return response.text
-                except Exception as exc:
-                    err_str = str(exc)
-                    if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                        time.sleep(1.0 * (attempt + 1))
-                        continue
-                    break
-        # Graceful fallback indicator
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt,
+                )
+                if response.text and response.text.strip():
+                    return response.text
+            except Exception as exc:
+                err_str = str(exc)
+                if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                break
+        # Graceful fallback indicator if third-party API is temporarily unavailable
         return None
+
 
 
     def _clean_code(self, raw_text: str) -> str:

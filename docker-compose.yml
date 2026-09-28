@@ -11,7 +11,9 @@ services:
       - "8000:8000"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
       - DATABASE_URL=sqlite:////app/storage/data_agent.db
+
       - ARTIFACTS_DIR=/app/storage/artifacts
       - UPLOADS_DIR=/app/storage/uploads
       - SANDBOX_TIMEOUT=15.0
