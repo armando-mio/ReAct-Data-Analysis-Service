@@ -5,8 +5,8 @@ from functools import lru_cache
 from typing import Optional
 from dotenv import load_dotenv
 
-# Automatically load .env file if present
-load_dotenv()
+# Automatically load .env file if present, overriding existing cached env vars
+load_dotenv(override=True)
 
 
 from data_agent.adapters.llm.gemini_adapter import GeminiLLMAdapter
@@ -26,11 +26,13 @@ class Container:
     """Singleton container maintaining shared adapter instances."""
 
     def __init__(self) -> None:
+        load_dotenv(override=True)
         self.db_url = os.getenv("DATABASE_URL", "sqlite:///storage/data_agent.db")
         self.artifacts_dir = os.getenv("ARTIFACTS_DIR", "storage/artifacts")
         self.uploads_dir = os.getenv("UPLOADS_DIR", "storage/uploads")
         self.sandbox_timeout = float(os.getenv("SANDBOX_TIMEOUT", "15.0"))
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
         # Port adapters
         self.storage: IArtifactStorage = LocalArtifactStorage(base_directory=self.artifacts_dir)
@@ -39,7 +41,10 @@ class Container:
 
         # Configurable LLM client (defaults to Gemini if API key is present, otherwise MockLLMAdapter for tests/offline)
         if self.gemini_api_key:
-            self.llm_client: ILLMClient = GeminiLLMAdapter(api_key=self.gemini_api_key)
+            self.llm_client: ILLMClient = GeminiLLMAdapter(
+                api_key=self.gemini_api_key,
+                model_name=self.gemini_model,
+            )
         else:
             self.llm_client: ILLMClient = MockLLMAdapter()
 
