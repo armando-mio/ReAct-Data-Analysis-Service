@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 from data_agent.core.entities import Artifact, TraceStep
@@ -19,9 +20,8 @@ class GeminiLLMAdapter(ILLMClient):
         model_name: Optional[str] = None,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
         self._client = None
-
 
     def _get_client(self):
         """Lazy initialization of the google-genai client."""
@@ -36,6 +36,33 @@ class GeminiLLMAdapter(ILLMClient):
             except Exception as exc:
                 raise LLMExecutionError(f"Failed to initialize Gemini client: {exc}") from exc
         return self._client
+
+    def _call_generate_content(self, prompt: str, max_retries: int = 3) -> str:
+        """Call Gemini models.generate_content with exponential backoff on transient errors."""
+        client = self._get_client()
+        models_to_try = [self.model_name]
+        for fallback in ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"]:
+            if fallback not in models_to_try:
+                models_to_try.append(fallback)
+
+
+        last_err = None
+        for model in models_to_try:
+            for attempt in range(max_retries):
+                try:
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                    )
+                    return response.text or ""
+                except Exception as exc:
+                    last_err = exc
+                    err_str = str(exc)
+                    if "503" in err_str or "UNAVAILABLE" in err_str:
+                        time.sleep(1.5 * (attempt + 1))
+                        continue
+                    break
+        raise LLMExecutionError(f"Gemini generation failed: {last_err}") from last_err
 
     def _clean_code(self, raw_text: str) -> str:
         """Strip markdown code blocks if the LLM wrapped python code."""
@@ -69,15 +96,9 @@ class GeminiLLMAdapter(ILLMClient):
             f"--- USER QUESTION ---\n{question}\n\n"
             "Output your concise reasoning plan:"
         )
-        try:
-            client = self._get_client()
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            return response.text.strip() if response.text else "Perform exploratory data analysis and generate visualization."
-        except Exception as exc:
-            raise LLMExecutionError(f"Gemini plan generation failed: {exc}") from exc
+        text = self._call_generate_content(prompt)
+        return text.strip() if text else "Perform exploratory data analysis and generate visualization."
+
 
     def generate_code(
         self,
@@ -112,16 +133,8 @@ class GeminiLLMAdapter(ILLMClient):
             f"{error_context}\n"
             "Python Code:"
         )
-        try:
-            client = self._get_client()
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            raw = response.text or ""
-            return self._clean_code(raw)
-        except Exception as exc:
-            raise LLMExecutionError(f"Gemini code generation failed: {exc}") from exc
+        raw = self._call_generate_content(prompt)
+        return self._clean_code(raw)
 
     def reflect_and_evaluate(
         self,
@@ -149,12 +162,7 @@ class GeminiLLMAdapter(ILLMClient):
             "JSON:"
         )
         try:
-            client = self._get_client()
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            text = (response.text or "").strip()
+            text = self._call_generate_content(prompt).strip()
             # Clean possible markdown JSON
             if text.startswith("```"):
                 text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
@@ -194,12 +202,6 @@ class GeminiLLMAdapter(ILLMClient):
             "Provide a polished, professional, natural language answer summarizing the specific numbers, "
             "trends, and insights found. Mention the interactive visualizations available if generated."
         )
-        try:
-            client = self._get_client()
-            response = client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-            )
-            return response.text.strip() if response.text else "Analysis concluded successfully."
-        except Exception as exc:
-            raise LLMExecutionError(f"Gemini summary generation failed: {exc}") from exc
+        text = self._call_generate_content(prompt)
+        return text.strip() if text else "Analysis concluded successfully."
+
