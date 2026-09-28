@@ -32,7 +32,7 @@ class Container:
         self.uploads_dir = os.getenv("UPLOADS_DIR", "storage/uploads")
         self.sandbox_timeout = float(os.getenv("SANDBOX_TIMEOUT", "15.0"))
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
-        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 
         # Port adapters
         self.storage: IArtifactStorage = LocalArtifactStorage(base_directory=self.artifacts_dir)

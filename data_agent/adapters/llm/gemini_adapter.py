@@ -42,8 +42,8 @@ class GeminiLLMAdapter(ILLMClient):
                 raise LLMExecutionError(f"Failed to initialize Gemini client: {exc}") from exc
         return self._client
 
-    def _call_generate_content(self, prompt: str, max_retries: int = 4) -> str:
-        """Call Gemini models.generate_content using the configured model from environment variables."""
+    def _call_generate_content(self, prompt: str, max_retries: int = 3) -> str:
+        """Call Gemini models.generate_content using configured and candidate models to survive free-tier per-model quotas."""
         client = self._get_client()
         last_error = None
 
@@ -56,25 +56,35 @@ class GeminiLLMAdapter(ILLMClient):
         except Exception:
             pass
 
-        for attempt in range(max_retries):
-            try:
-                kwargs = {"model": self.model_name, "contents": prompt}
-                if config is not None:
-                    kwargs["config"] = config
-                response = client.models.generate_content(**kwargs)
-                if response.text and response.text.strip():
-                    return response.text.strip()
-            except Exception as exc:
-                last_error = exc
-                err_str = str(exc)
-                if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    sleep_time = 2.0 * (attempt + 1)
-                    time.sleep(sleep_time)
-                    continue
-                raise LLMExecutionError(f"Gemini API invocation error: {exc}") from exc
+        # Build list of real Gemini models to try if the primary hits free-tier per-model quotas (429 RESOURCE_EXHAUSTED)
+        candidate_models = [self.model_name]
+        for fallback_m in ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite"]:
+            if fallback_m not in candidate_models:
+                candidate_models.append(fallback_m)
+
+        for model_to_use in candidate_models:
+            for attempt in range(max_retries):
+                try:
+                    kwargs = {"model": model_to_use, "contents": prompt}
+                    if config is not None:
+                        kwargs["config"] = config
+                    response = client.models.generate_content(**kwargs)
+                    if response.text and response.text.strip():
+                        return response.text.strip()
+                except Exception as exc:
+                    last_error = exc
+                    err_str = str(exc)
+                    # If this specific model hit a hard per-model daily quota (429 RESOURCE_EXHAUSTED), switch to next candidate model
+                    if "RESOURCE_EXHAUSTED" in err_str and "limit: 20" in err_str:
+                        break
+                    if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        sleep_time = 1.5 * (attempt + 1)
+                        time.sleep(sleep_time)
+                        continue
+                    raise LLMExecutionError(f"Gemini API invocation error: {exc}") from exc
 
         raise LLMExecutionError(
-            f"Gemini API request failed after {max_retries} attempts: {last_error}"
+            f"Gemini API request failed across candidate models: {last_error}"
         )
 
     def _clean_code(self, raw_text: str) -> str:
