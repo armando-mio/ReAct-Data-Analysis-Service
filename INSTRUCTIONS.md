@@ -85,6 +85,10 @@ python -m pytest --maxfail=1 -v
   ```bash
   python -m pytest tests/e2e/test_api.py -v
   ```
+- **Run 20-Query Progressive Complexity E2E Suite**:
+  ```bash
+  python -m pytest tests/e2e/test_progressive_queries.py -v
+  ```
 
 ---
 
