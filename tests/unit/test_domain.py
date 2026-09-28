@@ -5,7 +5,6 @@ import pytest
 
 from data_agent.core.entities import (
     Artifact,
-    Dataset,
     Message,
     MessageRole,
     Session,

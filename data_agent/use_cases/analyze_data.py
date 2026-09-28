@@ -136,7 +136,6 @@ class AnalyzeDataUseCase:
                 content=html_bytes,
             )
             artifact = session.add_artifact(file_name=html_name, storage_path=storage_path)
-            self.repository.add_artifact(artifact)
             artifact_responses.append({
                 "id": artifact.id,
                 "file_name": artifact.file_name,
@@ -148,7 +147,6 @@ class AnalyzeDataUseCase:
         trace_responses: List[Dict[str, Any]] = []
         for step in new_traces:
             session.traces.append(step)
-            self.repository.add_trace_step(step)
             trace_responses.append({
                 "step_index": step.step_index,
                 "thought": step.thought,

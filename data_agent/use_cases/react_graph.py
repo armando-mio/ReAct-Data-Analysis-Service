@@ -93,7 +93,6 @@ class ReActGraphBuilder:
             stdout=output,
             stderr=error,
             duration_seconds=duration,
-            execution_time=duration,
         )
 
         has_error = bool(error and error.strip())
@@ -131,6 +130,8 @@ class ReActGraphBuilder:
 
     def _finalizer_node(self, state: ReActAgentState) -> Dict[str, Any]:
         """Formulate natural language final answer integrating traces and artifacts."""
+        iteration = state.get("iteration", 0)
+        max_iterations = state.get("max_iterations", 4)
         traces = state.get("trace", [])
         artifacts = list(state.get("artifacts", []))
         if not artifacts and state.get("generated_html_files"):

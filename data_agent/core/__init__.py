@@ -2,7 +2,6 @@
 
 from data_agent.core.entities import (
     Artifact,
-    Dataset,
     Message,
     MessageRole,
     Session,
@@ -29,7 +28,6 @@ __all__ = [
     "MessageRole",
     "TraceStep",
     "Artifact",
-    "Dataset",
     "DomainError",
     "EntityNotFoundError",
     "SessionNotFoundError",

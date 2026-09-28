@@ -41,7 +41,6 @@ class TraceStep:
     stdout: Optional[str] = None
     stderr: Optional[str] = None
     duration_seconds: float = 0.0
-    execution_time: float = 0.0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -53,18 +52,6 @@ class Message:
     role: MessageRole = MessageRole.USER
     content: str = ""
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-
-
-@dataclass
-class Dataset:
-    """Domain representation of an uploaded or assigned dataset."""
-    path: str
-    filename: str
-    preview: str
-    row_count: int = 0
-    column_names: List[str] = field(default_factory=list)
-    column_types: Dict[str, str] = field(default_factory=dict)
-    summary_stats: Optional[str] = None
 
 
 @dataclass
@@ -103,7 +90,6 @@ class Session:
             stdout=stdout,
             stderr=stderr,
             duration_seconds=duration_seconds,
-            execution_time=duration_seconds,
         )
         self.traces.append(trace)
         self.updated_at = datetime.now(timezone.utc)

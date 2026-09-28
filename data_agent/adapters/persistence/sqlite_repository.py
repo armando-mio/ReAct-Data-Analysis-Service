@@ -57,7 +57,6 @@ class SQLiteSessionRepository(ISessionRepository):
                 stdout=trace.stdout,
                 stderr=trace.stderr,
                 duration_seconds=trace.duration_seconds,
-                execution_time=trace.duration_seconds,
             )
             for trace in record.traces
         ]
