@@ -237,6 +237,7 @@ class PromptOptimizationRunner:
                     optimizer_used = "DSPy GEPA"
                     gepa = dspy.GEPA(
                         metric=code_and_plot_execution_metric,
+                        reflection_lm=self.lm,
                         max_metric_calls=max_metric_calls,
                         reflection_minibatch_size=reflection_minibatch_size,
                         candidate_selection_strategy="pareto",
