@@ -16,11 +16,12 @@ class GeminiLLMAdapter(ILLMClient):
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model_name: str = "gemini-2.5-flash",
+        model_name: Optional[str] = None,
     ) -> None:
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model_name = model_name
+        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-flash-latest")
         self._client = None
+
 
     def _get_client(self):
         """Lazy initialization of the google-genai client."""
