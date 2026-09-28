@@ -49,7 +49,7 @@ def test_session_and_artifact_retrieval_flow(test_app: TestClient, sample_csv_co
         "file": ("sales_data.csv", io.BytesIO(sample_csv_content), "text/csv"),
     }
     data = {
-        "question": "Generate an interactive Plotly summary chart of sales.",
+        "question": "Which product category generated the highest total revenue?",
     }
     analyze_res = test_app.post("/analyze", data=data, files=files)
     assert analyze_res.status_code == 200

@@ -118,9 +118,11 @@ If you prefer to run the service natively without Docker:
 A sample transactional dataset with 50 rows and 4 columns is provided at [`data/sample_sales.csv`](data/sample_sales.csv).
 
 ### A. Run Analysis via cURL (`POST /analyze`)
+> **Autonomous Plotly Generation**: You do **not** need to request a chart or mention Plotly in your query. The ReAct LLM agent autonomously interprets the data, plans the best visual representation, and generates an interactive Plotly chart (`output_plot.html`) as an intrinsic feature of the service.
+
 ```bash
 curl -X POST "http://localhost:8000/analyze" \
-  -F "question=Quale categoria ha generato il maggior fatturato totale? Calcola i totali e genera un grafico a barre Plotly." \
+  -F "question=Quale categoria ha generato il maggior fatturato totale?" \
   -F "file=@data/sample_sales.csv"
 ```
 

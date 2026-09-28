@@ -90,6 +90,7 @@ stateDiagram-v2
 
 ### B. Why this API Contract (FastAPI + Multipart `/analyze`)
 - **Single-Flight Atomic Submissions**: The `POST /analyze` endpoint accepts `multipart/form-data`, allowing the user to submit an analytical prompt and a new CSV dataset file in one atomic request without separate upload ceremonies.
+- **Autonomous Plotly Visualization Mandate**: The client does not need to explicitly instruct the agent to "generate a chart" or mention Plotly in the query. The ReAct agent autonomously determines and executes the optimal interactive Plotly visualization for every analytical query as a core feature of the service.
 - **Conversational Resumption**: Accepts an optional `session_id` to continue multi-turn analysis over an existing dataset without re-uploading the file.
 - **Comprehensive Response Payload**: Returns a unified JSON schema containing the natural language answer, direct URLs to generated visualizations (`/artifacts/{id}`), and the step-by-step reasoning trace (thought, code, stdout, stderr, duration).
 - **Direct HTML Streaming**: `GET /artifacts/{id}` streams standalone Plotly HTML files (`media_type="text/html"`), allowing immediate in-browser rendering.
