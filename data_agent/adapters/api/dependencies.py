@@ -3,6 +3,11 @@
 import os
 from functools import lru_cache
 from typing import Optional
+from dotenv import load_dotenv
+
+# Automatically load .env file if present
+load_dotenv()
+
 
 from data_agent.adapters.llm.gemini_adapter import GeminiLLMAdapter
 from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
