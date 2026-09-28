@@ -36,3 +36,8 @@ ENV/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime Storage
+storage/
+*.db
+
