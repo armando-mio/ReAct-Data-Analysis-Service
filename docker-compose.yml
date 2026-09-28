@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  data-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: react-data-analysis-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DATABASE_URL=sqlite:////app/storage/data_agent.db
+      - ARTIFACTS_DIR=/app/storage/artifacts
+      - UPLOADS_DIR=/app/storage/uploads
+      - SANDBOX_TIMEOUT=15.0
+    volumes:
+      - ./storage:/app/storage
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+          cpus: "2.0"
+        reservations:
+          memory: 256M
