@@ -69,9 +69,11 @@ def evaluate_execution_score(
         }
 
     if not exec_res.is_success:
-        err_msg = exec_res.stderr or ("Execution timed out" if exec_res.timed_out else "Execution failed")
+        raw_err = (exec_res.stderr or ("Execution timed out" if exec_res.timed_out else "Execution failed")).strip()
+        last_line = raw_err.splitlines()[-1] if raw_err else "Execution failed"
+        err_snippet = raw_err[-400:] if len(raw_err) > 400 else raw_err
         msg = (
-            f"Code failed at runtime in sandbox with error: {err_msg[:300]}. "
+            f"Code failed at runtime in sandbox with error: {last_line}. Trace: {err_snippet}. "
             f"Check column names, imports (import plotly.express as px, pandas as pd), and data types."
         )
         return 0.35, msg, {
