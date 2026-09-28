@@ -68,6 +68,26 @@ class MockLLMAdapter(ILLMClient):
                 "fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
             )
 
+        # Dynamic dataset code inspecting preview
+        cat_col = "Category" if "Category" in dataset_preview else ("category" if "category" in dataset_preview else None)
+        val_col = "Revenue" if "Revenue" in dataset_preview else ("sales" if "sales" in dataset_preview else None)
+
+        if cat_col and val_col:
+            return (
+                "import pandas as pd\n"
+                "import plotly.express as px\n"
+                "df = pd.read_csv('dataset.csv')\n"
+                f"print('=== Total {val_col} by {cat_col} ===')\n"
+                f"grouped = df.groupby('{cat_col}')['{val_col}'].sum().reset_index()\n"
+                f"grouped = grouped.sort_values(by='{val_col}', ascending=False)\n"
+                "print(grouped.to_string(index=False))\n"
+                f"top = grouped.iloc[0]\n"
+                f"print(f\"\\nTop Performing: {{top['{cat_col}']}} with {{top['{val_col}']:.2f}}\")\n"
+                f"fig = px.bar(grouped, x='{cat_col}', y='{val_col}', color='{cat_col}', title='Total {val_col} by {cat_col}')\n"
+                "fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
+                "print('Successfully generated Plotly chart: output_plot.html')\n"
+            )
+
         # Standard default code
         return (
             "import pandas as pd\n"
@@ -77,6 +97,7 @@ class MockLLMAdapter(ILLMClient):
             "fig = px.bar(df.head(5), title='Data Summary')\n"
             "fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
         )
+
 
     def reflect_and_evaluate(
         self,

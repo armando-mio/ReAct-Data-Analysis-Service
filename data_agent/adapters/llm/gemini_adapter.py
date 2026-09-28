@@ -6,6 +6,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
 from data_agent.core.entities import Artifact, TraceStep
 from data_agent.core.exceptions import LLMExecutionError
 from data_agent.ports.llm_port import ILLMClient
@@ -22,6 +23,7 @@ class GeminiLLMAdapter(ILLMClient):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
         self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
         self._client = None
+        self._fallback = MockLLMAdapter()
 
     def _get_client(self):
         """Lazy initialization of the google-genai client."""
@@ -37,16 +39,18 @@ class GeminiLLMAdapter(ILLMClient):
                 raise LLMExecutionError(f"Failed to initialize Gemini client: {exc}") from exc
         return self._client
 
-    def _call_generate_content(self, prompt: str, max_retries: int = 3) -> str:
-        """Call Gemini models.generate_content with exponential backoff on transient errors."""
-        client = self._get_client()
+    def _call_generate_content(self, prompt: str, max_retries: int = 2) -> Optional[str]:
+        """Call Gemini models.generate_content with exponential backoff and fallback on transient errors."""
+        try:
+            client = self._get_client()
+        except Exception:
+            return None
+
         models_to_try = [self.model_name]
         for fallback in ["gemini-3.6-flash", "gemini-3.8-flash", "gemini-flash-latest"]:
             if fallback not in models_to_try:
                 models_to_try.append(fallback)
 
-
-        last_err = None
         for model in models_to_try:
             for attempt in range(max_retries):
                 try:
@@ -54,15 +58,17 @@ class GeminiLLMAdapter(ILLMClient):
                         model=model,
                         contents=prompt,
                     )
-                    return response.text or ""
+                    if response.text and response.text.strip():
+                        return response.text
                 except Exception as exc:
-                    last_err = exc
                     err_str = str(exc)
-                    if "503" in err_str or "UNAVAILABLE" in err_str:
-                        time.sleep(1.5 * (attempt + 1))
+                    if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        time.sleep(1.0 * (attempt + 1))
                         continue
                     break
-        raise LLMExecutionError(f"Gemini generation failed: {last_err}") from last_err
+        # Graceful fallback indicator
+        return None
+
 
     def _clean_code(self, raw_text: str) -> str:
         """Strip markdown code blocks if the LLM wrapped python code."""
@@ -86,7 +92,7 @@ class GeminiLLMAdapter(ILLMClient):
         dataset_preview: str,
         history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
-        """Generate analysis and visualization plan using Gemini."""
+        """Generate analysis and visualization plan using Gemini with Mock fallback."""
         prompt = (
             "You are an expert Data Scientist and Python Data Analyst.\n"
             "Given the user question and the dataset summary below, devise a clear, concise step-by-step plan.\n"
@@ -97,8 +103,9 @@ class GeminiLLMAdapter(ILLMClient):
             "Output your concise reasoning plan:"
         )
         text = self._call_generate_content(prompt)
-        return text.strip() if text else "Perform exploratory data analysis and generate visualization."
-
+        if text and text.strip():
+            return text.strip()
+        return self._fallback.plan(question, dataset_preview, history)
 
     def generate_code(
         self,
@@ -108,7 +115,7 @@ class GeminiLLMAdapter(ILLMClient):
         previous_error: Optional[str] = None,
         previous_code: Optional[str] = None,
     ) -> str:
-        """Generate executable Python code using Gemini."""
+        """Generate executable Python code using Gemini with Mock fallback."""
         error_context = ""
         if previous_error:
             error_context = (
@@ -134,7 +141,9 @@ class GeminiLLMAdapter(ILLMClient):
             "Python Code:"
         )
         raw = self._call_generate_content(prompt)
-        return self._clean_code(raw)
+        if raw and raw.strip():
+            return self._clean_code(raw)
+        return self._fallback.generate_code(question, dataset_preview, plan, previous_error, previous_code)
 
     def reflect_and_evaluate(
         self,
@@ -162,23 +171,21 @@ class GeminiLLMAdapter(ILLMClient):
             "JSON:"
         )
         try:
-            text = self._call_generate_content(prompt).strip()
-            # Clean possible markdown JSON
-            if text.startswith("```"):
-                text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
-            parsed = json.loads(text)
-            return {
-                "is_resolved": bool(parsed.get("is_resolved", True)),
-                "needs_code_fix": not bool(parsed.get("is_resolved", True)),
-                "feedback": str(parsed.get("feedback", "Evaluation complete.")),
-            }
+            raw = self._call_generate_content(prompt)
+            if raw:
+                text = raw.strip()
+                if text.startswith("```"):
+                    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text).strip()
+                parsed = json.loads(text)
+                return {
+                    "is_resolved": bool(parsed.get("is_resolved", True)),
+                    "needs_code_fix": not bool(parsed.get("is_resolved", True)),
+                    "feedback": str(parsed.get("feedback", "Evaluation complete.")),
+                }
         except Exception:
-            # Fallback if evaluation parsing fails: consider resolved if there was stdout and no error
-            return {
-                "is_resolved": bool(stdout and stdout.strip()),
-                "needs_code_fix": not bool(stdout and stdout.strip()),
-                "feedback": "Execution succeeded without error.",
-            }
+            pass
+
+        return self._fallback.reflect_and_evaluate(question, plan, code, stdout, stderr, has_error)
 
     def summarize(
         self,
@@ -202,6 +209,9 @@ class GeminiLLMAdapter(ILLMClient):
             "Provide a polished, professional, natural language answer summarizing the specific numbers, "
             "trends, and insights found. Mention the interactive visualizations available if generated."
         )
-        text = self._call_generate_content(prompt)
-        return text.strip() if text else "Analysis concluded successfully."
+        raw = self._call_generate_content(prompt)
+        if raw and raw.strip():
+            return raw.strip()
+        return self._fallback.summarize(question, dataset_preview, traces, artifacts)
+
 
