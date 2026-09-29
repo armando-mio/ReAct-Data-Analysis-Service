@@ -21,6 +21,8 @@ class AnalysisResult:
     """Structured response container for the analysis use case."""
     session_id: str
     answer: str
+    status: str = "success"
+    error: Optional[str] = None
     artifacts: List[Dict[str, str]] = field(default_factory=list)
     trace: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -123,7 +125,23 @@ class AnalyzeDataUseCase:
             "feedback": None,
         }
 
-        final_state = graph.invoke(initial_state)
+        try:
+            final_state = graph.invoke(initial_state)
+            is_resolved = final_state.get("is_resolved", True)
+            last_err = final_state.get("execution_error")
+            status_str = "success" if is_resolved else "failed"
+            final_answer = final_state.get("final_answer") or (
+                "Analysis completed." if is_resolved else f"Analysis could not be completed: {last_err or 'Max reflection iterations reached.'}"
+            )
+            error_msg = last_err if not is_resolved else None
+        except Exception as exc:
+            status_str = "failed"
+            error_msg = str(exc)
+            final_answer = f"Analysis execution failed: {exc}. Please verify the query and dataset."
+            final_state = {
+                "generated_html_files": [],
+                "trace": session.traces,
+            }
 
         # Ingest and persist generated HTML artifacts
         generated_html_files = final_state.get("generated_html_files", [])
@@ -157,7 +175,6 @@ class AnalyzeDataUseCase:
             })
 
         # Save assistant answer message
-        final_answer = final_state.get("final_answer") or "Analysis completed."
         session.add_message(role=MessageRole.ASSISTANT, content=final_answer)
 
         # Update session in repository
@@ -166,6 +183,8 @@ class AnalyzeDataUseCase:
         return AnalysisResult(
             session_id=session.id,
             answer=final_answer,
+            status=status_str,
+            error=error_msg,
             artifacts=artifact_responses,
             trace=trace_responses,
         )

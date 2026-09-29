@@ -26,6 +26,8 @@ class AnalyzeResponse(BaseModel):
     """Response model for POST /analyze."""
     session_id: str
     answer: str
+    status: str = "success"
+    error: Optional[str] = None
     artifacts: List[ArtifactSummary] = Field(default_factory=list)
     trace: List[TraceStepSummary] = Field(default_factory=list)
 

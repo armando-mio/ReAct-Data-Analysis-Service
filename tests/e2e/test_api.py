@@ -3,6 +3,8 @@
 import io
 from fastapi.testclient import TestClient
 
+from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
+
 
 def test_post_analyze_with_csv(test_app: TestClient, sample_csv_content: bytes):
     """Test POST /analyze with multipart CSV upload and full ReAct loop response."""
@@ -20,6 +22,7 @@ def test_post_analyze_with_csv(test_app: TestClient, sample_csv_content: bytes):
     assert "session_id" in payload
     assert "answer" in payload
     assert isinstance(payload["answer"], str)
+    assert payload.get("status") == "success"
     assert "trace" in payload
     assert isinstance(payload["trace"], list)
     assert len(payload["trace"]) >= 1
@@ -43,7 +46,7 @@ def test_post_analyze_with_csv(test_app: TestClient, sample_csv_content: bytes):
 
 
 def test_session_and_artifact_retrieval_flow(test_app: TestClient, sample_csv_content: bytes):
-    """Test full cycle: Analyze -> GET /sessions/{id} -> GET /artifacts/{id}."""
+    """Test full cycle: Analyze -> GET /sessions/{id} -> GET /artifacts/{id} and session artifact route."""
     # 1. Analyze
     files = {
         "file": ("sales_data.csv", io.BytesIO(sample_csv_content), "text/csv"),
@@ -64,13 +67,21 @@ def test_session_and_artifact_retrieval_flow(test_app: TestClient, sample_csv_co
     assert len(session_payload["messages"]) >= 2  # user prompt + assistant answer
     assert len(session_payload["traces"]) >= 1
 
-    # 3. Get artifact if generated
+    # 3. Get artifact via both endpoints
     if analyze_payload["artifacts"]:
         artifact_id = analyze_payload["artifacts"][0]["id"]
+
+        # Standard route
         art_res = test_app.get(f"/artifacts/{artifact_id}")
         assert art_res.status_code == 200
         assert "text/html" in art_res.headers["content-type"]
         assert len(art_res.content) > 0
+
+        # Session-scoped route
+        sess_art_res = test_app.get(f"/sessions/{session_id}/artifacts/{artifact_id}")
+        assert sess_art_res.status_code == 200
+        assert "text/html" in sess_art_res.headers["content-type"]
+        assert len(sess_art_res.content) > 0
 
 
 def test_analyze_invalid_csv_validation_error(test_app: TestClient):
@@ -88,3 +99,47 @@ def test_get_non_existent_session_404(test_app: TestClient):
     response = test_app.get("/sessions/non-existent-session-id")
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
+
+
+def test_get_non_existent_artifact_404(test_app: TestClient):
+    """Test that querying a non-existent artifact ID returns typed HTTP 404."""
+    response = test_app.get("/artifacts/non-existent-artifact-id")
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+def test_analyze_persistent_failure_graceful_handling(test_app: TestClient, sample_csv_content: bytes):
+    """Verify that persistent sandbox failures do not crash the service with 500, returning graceful status."""
+    from data_agent.adapters.api import dependencies
+    container = dependencies.get_container()
+
+    # Configure MockLLM to repeatedly generate syntax errors
+    failing_code = "print(invalid syntax error %%%)"
+    broken_mock = MockLLMAdapter(
+        scripted_codes=[failing_code, failing_code, failing_code, failing_code],
+        scripted_evaluations=[
+            {"is_resolved": False, "needs_code_fix": True, "feedback": "Syntax error"},
+            {"is_resolved": False, "needs_code_fix": True, "feedback": "Syntax error"},
+            {"is_resolved": False, "needs_code_fix": True, "feedback": "Syntax error"},
+            {"is_resolved": False, "needs_code_fix": True, "feedback": "Syntax error"},
+        ],
+    )
+    original_client = container.llm_client
+    container.set_llm_client(broken_mock)
+
+    try:
+        files = {
+            "file": ("sales_data.csv", io.BytesIO(sample_csv_content), "text/csv"),
+        }
+        data = {
+            "question": "Calculate metrics with failing code",
+        }
+        res = test_app.post("/analyze", data=data, files=files)
+        # Must not crash with HTTP 500!
+        assert res.status_code == 200
+        payload = res.json()
+        assert payload["status"] == "failed"
+        assert len(payload["trace"]) > 0
+        assert "SyntaxError" in payload["trace"][0]["stderr"]
+    finally:
+        container.set_llm_client(original_client)

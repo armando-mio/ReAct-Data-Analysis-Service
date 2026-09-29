@@ -1,4 +1,4 @@
-"""Router for POST /analyze endpoint."""
+"""Router for POST /analyze endpoint with graceful error handling and self-healing recovery."""
 
 from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -49,19 +49,31 @@ async def analyze_data(
             detail=err.message,
         ) from err
     except DomainError as err:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=err.message,
-        ) from err
+        # Graceful failure returning structured payload rather than HTTP 500
+        return AnalyzeResponse(
+            session_id=session_id or "error",
+            answer=f"Analysis could not be completed due to a domain error: {err.message}",
+            status="failed",
+            error=str(err),
+            artifacts=[],
+            trace=[],
+        )
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred during analysis: {exc}",
-        ) from exc
+        # Graceful failure for unexpected runtime exceptions
+        return AnalyzeResponse(
+            session_id=session_id or "error",
+            answer=f"An unexpected error occurred during analysis: {exc}",
+            status="failed",
+            error=str(exc),
+            artifacts=[],
+            trace=[],
+        )
 
     return AnalyzeResponse(
         session_id=result.session_id,
         answer=result.answer,
+        status=result.status,
+        error=result.error,
         artifacts=[ArtifactSummary(**art) for art in result.artifacts],
         trace=[TraceStepSummary(**t) for t in result.trace],
     )
