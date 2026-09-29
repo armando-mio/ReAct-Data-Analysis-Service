@@ -35,8 +35,8 @@ def test_sandbox_network_blocking_socket():
 
     result = sandbox.execute(code=network_attempt_code)
     assert not result.is_success
-    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr)
-    assert "External network access is blocked by sandbox security policy" in result.stderr
+    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr or "RuntimeError" in result.stderr)
+    assert ("External network access is prohibited in this sandbox" in result.stderr or "External network access is blocked" in result.stderr)
     assert result.security_violation is not None
 
 
@@ -50,8 +50,8 @@ def test_sandbox_network_blocking_urllib():
 
     result = sandbox.execute(code=urllib_code)
     assert not result.is_success
-    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr)
-    assert "External network access is blocked by sandbox security policy" in result.stderr
+    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr or "RuntimeError" in result.stderr or "URLError" in result.stderr)
+    assert ("External network access is prohibited in this sandbox" in result.stderr or "External network access is blocked" in result.stderr)
 
 
 def test_sandbox_fig_show_neutralized():

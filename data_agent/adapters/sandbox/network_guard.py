@@ -1,75 +1,31 @@
-"""Network security guard snippet and autonomous initialization hook.
+"""Network security guard snippet for sandbox isolation.
 
-Neutralizes cross-platform network socket calls and HTTP libraries to prevent external communication.
-Raises NetworkAccessBlockedError upon any attempt to access the network.
+Neutralizes socket and network access within executed sandbox scripts.
 """
 
-from pathlib import Path
+import socket
 
-BOOTSTRAP_NETWORK_GUARD = '''# Sandbox Security Guard - Network Isolation
-import sys
 
-# Define NetworkAccessBlockedError matching domain exception hierarchy
-class NetworkAccessBlockedError(PermissionError):
-    """Raised when sandbox code attempts external network access."""
-    def __init__(self, message="External network access is blocked by sandbox security policy."):
+class NetworkAccessBlockedError(RuntimeError, PermissionError):
+    """Raised when sandbox execution attempts external network access."""
+
+    def __init__(self, message: str = "External network access is prohibited in this sandbox.") -> None:
         super().__init__(message)
         self.message = message
 
-def _blocked_network_call(*args, **kwargs):
-    raise NetworkAccessBlockedError("External network access is blocked by sandbox security policy.")
 
-# Patch low-level socket module
-try:
-    import socket
-    socket.socket.connect = _blocked_network_call
-    socket.socket.bind = _blocked_network_call
-    socket.create_connection = _blocked_network_call
-    socket.getaddrinfo = _blocked_network_call
-    socket.gethostbyname = _blocked_network_call
-    socket.gethostbyname_ex = _blocked_network_call
-except Exception:
-    pass
+def block_network() -> None:
+    """Neutralize socket creations and connections inside the sandbox environment."""
 
-# Patch standard HTTP client modules
-try:
-    import urllib.request
-    urllib.request.urlopen = _blocked_network_call
-except Exception:
-    pass
+    def _blocked(*args, **kwargs):
+        raise NetworkAccessBlockedError("External network access is prohibited in this sandbox.")
 
-try:
-    import http.client
-    http.client.HTTPConnection.connect = _blocked_network_call
-    http.client.HTTPSConnection.connect = _blocked_network_call
-except Exception:
-    pass
+    class BlockedSocket(socket.socket):
+        def __init__(self, *args, **kwargs):
+            raise NetworkAccessBlockedError("External network access is prohibited in this sandbox.")
 
-# Neutralize interactive display methods (e.g. Plotly / Matplotlib fig.show())
-try:
-    import plotly.graph_objects as _go
-    _go.Figure.show = lambda self, *args, **kwargs: None
-except Exception:
-    pass
+        def connect(self, *args, **kwargs):
+            raise NetworkAccessBlockedError("External network access is prohibited in this sandbox.")
 
-try:
-    import matplotlib.pyplot as _plt
-    _plt.show = lambda *args, **kwargs: None
-except Exception:
-    pass
-'''
-
-
-def write_network_guard_init(destination_dir: Path) -> Path:
-    """Write standalone network guard init script into the target directory.
-
-    Writes both `network_guard_init.py` and `sitecustomize.py` so Python
-    deterministically executes the security hooks before running any untrusted script.
-    """
-    guard_file = destination_dir / "network_guard_init.py"
-    guard_file.write_text(BOOTSTRAP_NETWORK_GUARD, encoding="utf-8")
-
-    sitecustomize_file = destination_dir / "sitecustomize.py"
-    sitecustomize_file.write_text(BOOTSTRAP_NETWORK_GUARD, encoding="utf-8")
-
-    return guard_file
+    socket.socket = BlockedSocket
+    socket.create_connection = _blocked

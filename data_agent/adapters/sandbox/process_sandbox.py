@@ -2,7 +2,6 @@
 
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -10,10 +9,8 @@ import tempfile
 import time
 from typing import List, Optional, Tuple
 
-from data_agent.adapters.sandbox.network_guard import BOOTSTRAP_NETWORK_GUARD, write_network_guard_init
 from data_agent.core.exceptions import (
     ExecutionTimeoutError,
-    NetworkAccessBlockedError,
     SandboxSecurityError,
     SandboxTimeoutError,
 )
@@ -31,28 +28,16 @@ class ProcessSandboxRunner(ISandboxRunner):
         self.default_timeout = default_timeout
         self.python_executable = python_executable or sys.executable
 
-    def _sanitize_code(self, code: str) -> str:
-        """Scan code and neutralize calls to fig.show(), figure.show(), and plt.show() with a no-op."""
-        pattern = r"(\b(?:fig|figure|plt|plot)\.show\s*\([^)]*\))"
-        return re.sub(pattern, "pass  # fig.show() neutralized by sandbox", code)
-
     def _terminate_process_tree(self, proc: subprocess.Popen) -> None:
-        """Forcefully terminate a process and any child processes it spawned."""
+        """Forcefully terminate the process and its child processes cross-platform."""
         try:
-            if sys.platform == "win32":
-                subprocess.run(
-                    ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-            else:
+            if hasattr(os, "killpg") and hasattr(os, "getpgid"):
                 import signal
-                try:
-                    pgid = os.getpgid(proc.pid)
-                    os.killpg(pgid, signal.SIGKILL)
-                except Exception:
-                    proc.kill()
+                os.killpg(os.getpgid(proc.pid), getattr(signal, "SIGKILL", signal.SIGTERM))
+            else:
+                proc.kill()
+        except ProcessLookupError:
+            pass
         except Exception:
             try:
                 proc.kill()
@@ -81,43 +66,47 @@ class ProcessSandboxRunner(ISandboxRunner):
                 if not dest_standard.exists():
                     shutil.copy2(src_path, dest_standard)
 
-            # 2. Write network guard init scripts into sandbox environment
-            guard_path = write_network_guard_init(temp_path)
+            # 2. Inject security bootstrap header at the top of the user script:
+            # - Activates network guard (blocks sockets & HTTP connections)
+            # - Neutralizes interactive fig.show() and plt.show() without regex/AST parsing
+            bootstrap_header = (
+                "import sys\n"
+                "from data_agent.adapters.sandbox.network_guard import block_network\n"
+                "block_network()\n\n"
+                "# Neutralize interactive display methods at runtime without altering user code\n"
+                "try:\n"
+                "    import plotly.graph_objects as go\n"
+                "    go.Figure.show = lambda *args, **kwargs: None\n"
+                "except ImportError:\n"
+                "    pass\n\n"
+                "try:\n"
+                "    import matplotlib.pyplot as plt\n"
+                "    plt.show = lambda *args, **kwargs: None\n"
+                "except ImportError:\n"
+                "    pass\n\n"
+            )
 
-            # 3. Sanitize user code to neutralize blocking fig.show() calls
-            sanitized_code = self._sanitize_code(code)
-
-            # 4. Write script to execute
             script_path = temp_path / "sandbox_script.py"
-            # Prepend guard snippet directly as additional safeguard
-            full_script_content = f"{BOOTSTRAP_NETWORK_GUARD}\n# --- User Generated Code ---\n{sanitized_code}\n"
+            full_script_content = bootstrap_header + code
             script_path.write_text(full_script_content, encoding="utf-8")
 
-            # 5. Environment configuration enforcing network isolation
+            # 3. Configure environment: ensure repo root is in PYTHONPATH
+            repo_root = Path(__file__).resolve().parents[3]
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             env["PYTHONDONTWRITEBYTECODE"] = "1"
-            env["PYTHONSTARTUP"] = str(guard_path)
-            # Ensure sandbox directory is at the head of PYTHONPATH so sitecustomize is loaded immediately
             current_pythonpath = env.get("PYTHONPATH", "")
-            env["PYTHONPATH"] = f"{temp_path}{os.pathsep}{current_pythonpath}" if current_pythonpath else str(temp_path)
-
-            # Process group creation flags
-            extra_popen_kwargs = {}
-            if sys.platform != "win32":
-                extra_popen_kwargs["start_new_session"] = True
-            else:
-                extra_popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            env["PYTHONPATH"] = (
+                f"{repo_root}{os.pathsep}{current_pythonpath}"
+                if current_pythonpath
+                else str(repo_root)
+            )
 
             start_time = time.perf_counter()
             proc = None
             try:
                 proc = subprocess.Popen(
-                    [
-                        self.python_executable,
-                        "-c",
-                        "import network_guard_init; import runpy, sys; sys.argv = ['sandbox_script.py']; runpy.run_path('sandbox_script.py', run_name='__main__')",
-                    ],
+                    [self.python_executable, "sandbox_script.py"],
                     cwd=str(temp_path),
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -125,7 +114,7 @@ class ProcessSandboxRunner(ISandboxRunner):
                     encoding="utf-8",
                     errors="replace",
                     env=env,
-                    **extra_popen_kwargs,
+                    start_new_session=True,
                 )
 
                 stdout, stderr = proc.communicate(timeout=effective_timeout)
@@ -141,15 +130,17 @@ class ProcessSandboxRunner(ISandboxRunner):
                     self._terminate_process_tree(proc)
                 raise exc
 
-            # Detect network security violations
+            # 4. Detect network security violations in stderr
             security_violation: Optional[str] = None
             if (
-                "External network access is blocked by sandbox security policy" in stderr
-                or "NetworkAccessBlockedError" in stderr
+                "NetworkAccessBlockedError" in stderr
+                or "External network access is prohibited in this sandbox" in stderr
+                or "External network access is blocked" in stderr
             ):
-                security_violation = "External network access blocked by sandbox security policy."
+                security_violation = "External network access is prohibited in this sandbox."
 
-            # Collect generated HTML artifacts (Plotly visualizations)
+            # 5. Collect generated HTML artifacts (Plotly visualizations) if any
+            # Optional: returns empty list if no HTML artifact was generated
             generated_html: List[Tuple[str, bytes]] = []
             for file_path in temp_path.glob("*.html"):
                 try:
