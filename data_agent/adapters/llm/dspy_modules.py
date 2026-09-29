@@ -64,12 +64,33 @@ class SummarizeSignature(dspy.Signature):
 class DataAnalysisReActModule(dspy.Module):
     """DSPy module implementing the ReAct reasoning pipeline for data analysis and visualization."""
 
-    def __init__(self) -> None:
+    def __init__(self, optimized_prompts_path: Optional[str] = None) -> None:
         super().__init__()
         self.planner = dspy.ChainOfThought(PlanSignature)
         self.coder = dspy.ChainOfThought(CodeGenerationSignature)
         self.reflector = dspy.Predict(ReflectionSignature)
         self.summarizer = dspy.Predict(SummarizeSignature)
+
+        # Decoupled runtime loading: load optimized prompt instructions if serialized file exists
+        search_paths = [
+            optimized_prompts_path,
+            os.getenv("OPTIMIZED_PROMPTS_PATH"),
+            "examples/optimized_prompts.json",
+            "storage/optimized_prompts.json",
+        ]
+        for path_candidate in search_paths:
+            if path_candidate and os.path.isfile(path_candidate):
+                try:
+                    import json
+                    with open(path_candidate, "r", encoding="utf-8") as f:
+                        prompts = json.load(f)
+                    if "planner.predict" in prompts:
+                        self.planner.predict.signature = self.planner.predict.signature.with_instructions(prompts["planner.predict"])
+                    if "coder.predict" in prompts:
+                        self.coder.predict.signature = self.coder.predict.signature.with_instructions(prompts["coder.predict"])
+                    break
+                except Exception:
+                    pass
 
     def forward(
         self,
