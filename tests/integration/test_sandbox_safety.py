@@ -110,3 +110,23 @@ def test_sandbox_plotly_html_extraction():
     filename, content = result.generated_html_files[0]
     assert filename == "output_plot.html"
     assert b"plotly" in content.lower()
+
+
+def test_sandbox_dataset_path_resolution():
+    """Verify that sandbox resolves dataset via direct name, standard dataset.csv, and data/ subfolder."""
+    sandbox = ProcessSandboxRunner(default_timeout=5.0)
+    dataset_file = "data/sample_sales.csv"
+
+    # Test reading via original filename, generic name, and subfolder
+    code = (
+        "import pandas as pd\n"
+        "df1 = pd.read_csv('sample_sales.csv')\n"
+        "df2 = pd.read_csv('dataset.csv')\n"
+        "df3 = pd.read_csv('data/sample_sales.csv')\n"
+        "print(f'Rows: {len(df1)}, {len(df2)}, {len(df3)}')\n"
+    )
+
+    result = sandbox.execute(code=code, dataset_path=dataset_file)
+    assert result.is_success
+    assert "Rows: 50, 50, 50" in result.stdout
+

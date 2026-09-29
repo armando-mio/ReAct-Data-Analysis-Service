@@ -60,11 +60,15 @@ class ProcessSandboxRunner(ISandboxRunner):
             # 1. Copy dataset into isolated directory if provided
             if dataset_path and Path(dataset_path).is_file():
                 src_path = Path(dataset_path).resolve()
-                dest_original = temp_path / src_path.name
-                shutil.copy2(src_path, dest_original)
-                dest_standard = temp_path / "dataset.csv"
-                if not dest_standard.exists():
-                    shutil.copy2(src_path, dest_standard)
+                # Copy directly into current working directory (e.g. "sample_sales.csv" and "dataset.csv")
+                shutil.copy2(src_path, temp_path / src_path.name)
+                shutil.copy2(src_path, temp_path / "dataset.csv")
+
+                # Also support relative paths like pd.read_csv("data/sample_sales.csv") or "data/dataset.csv"
+                data_subdir = temp_path / "data"
+                data_subdir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, data_subdir / src_path.name)
+                shutil.copy2(src_path, data_subdir / "dataset.csv")
 
             # 2. Inject security bootstrap header at the top of the user script:
             # - Activates network guard (blocks sockets & HTTP connections)
@@ -95,12 +99,7 @@ class ProcessSandboxRunner(ISandboxRunner):
             env = os.environ.copy()
             env["PYTHONUNBUFFERED"] = "1"
             env["PYTHONDONTWRITEBYTECODE"] = "1"
-            current_pythonpath = env.get("PYTHONPATH", "")
-            env["PYTHONPATH"] = (
-                f"{repo_root}{os.pathsep}{current_pythonpath}"
-                if current_pythonpath
-                else str(repo_root)
-            )
+            env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
 
             start_time = time.perf_counter()
             proc = None
