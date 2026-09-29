@@ -43,6 +43,19 @@ class TraceStep:
     duration_seconds: float = 0.0
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert trace step to standardized structured dictionary format."""
+        return {
+            "step_number": self.step_index,
+            "thought": self.thought,
+            "code_generated": self.code,
+            "observation_output": self.stdout,
+            "error_output": self.stderr,
+            "is_error": bool(self.stderr and self.stderr.strip()),
+            "execution_time_ms": round(self.duration_seconds * 1000.0, 2),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
 
 @dataclass
 class Message:
@@ -106,3 +119,7 @@ class Session:
         self.artifacts.append(artifact)
         self.updated_at = datetime.now(timezone.utc)
         return artifact
+
+    def get_structured_traces(self) -> List[Dict[str, Any]]:
+        """Return the complete reasoning trace as structured dictionaries."""
+        return [trace.to_dict() for trace in self.traces]

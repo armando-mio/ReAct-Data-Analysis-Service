@@ -1,7 +1,7 @@
 """Abstract interface for session, message, trace, and artifact persistence."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from data_agent.core.entities import Artifact, Message, Session, TraceStep
 
 
@@ -29,8 +29,18 @@ class ISessionRepository(ABC):
         pass
 
     @abstractmethod
+    def get_messages(self, session_id: str) -> List[Message]:
+        """Retrieve all messages for a session ordered by timestamp."""
+        pass
+
+    @abstractmethod
     def add_trace_step(self, trace: TraceStep) -> TraceStep:
         """Persist an individual reasoning trace record for a session."""
+        pass
+
+    @abstractmethod
+    def get_traces(self, session_id: str) -> List[TraceStep]:
+        """Retrieve all reasoning trace steps for a session ordered by step_index."""
         pass
 
     @abstractmethod
@@ -41,4 +51,19 @@ class ISessionRepository(ABC):
     @abstractmethod
     def get_artifact(self, artifact_id: str) -> Optional[Artifact]:
         """Retrieve artifact metadata by its unique ID."""
+        pass
+
+    @abstractmethod
+    def get_artifacts(self, session_id: str) -> List[Artifact]:
+        """Retrieve all generated artifacts for a session."""
+        pass
+
+    @abstractmethod
+    def get_session_history(self, session_id: str) -> Dict[str, Any]:
+        """Retrieve complete session history including structured traces and artifacts."""
+        pass
+
+    @abstractmethod
+    def close(self) -> None:
+        """Cleanly close connection pool and release persistent database resources."""
         pass

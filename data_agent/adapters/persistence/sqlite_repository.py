@@ -1,8 +1,8 @@
-"""SQLite implementation of ISessionRepository using SQLAlchemy."""
+"""SQLite implementation of ISessionRepository using SQLAlchemy with WAL concurrency."""
 
 from pathlib import Path
-from typing import List, Optional
-from sqlalchemy import create_engine, select
+from typing import Any, Dict, List, Optional
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session as DBSession, sessionmaker
 
 from data_agent.adapters.persistence.models import (
@@ -17,15 +17,29 @@ from data_agent.ports.repository_port import ISessionRepository
 
 
 class SQLiteSessionRepository(ISessionRepository):
-    """Persists sessions, messages, traces, and artifacts in a local SQLite database."""
+    """Persists sessions, messages, traces, and artifacts in SQLite with WAL concurrency."""
 
     def __init__(self, db_url: str = "sqlite:///storage/data_agent.db") -> None:
-        # Ensure directory for sqlite file exists if using relative path
+        # Ensure parent directory exists for SQLite file
         if db_url.startswith("sqlite:///") and not db_url.startswith("sqlite:///:memory:"):
             db_path_str = db_url.replace("sqlite:///", "")
             Path(db_path_str).parent.mkdir(parents=True, exist_ok=True)
 
-        self.engine = create_engine(db_url, echo=False, connect_args={"check_same_thread": False})
+        self.engine = create_engine(
+            db_url,
+            echo=False,
+            connect_args={"check_same_thread": False},
+        )
+
+        # Configure WAL mode and busy timeout on every connection
+        @event.listens_for(self.engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode = WAL;")
+            cursor.execute("PRAGMA busy_timeout = 5000;")
+            cursor.execute("PRAGMA synchronous = NORMAL;")
+            cursor.close()
+
         Base.metadata.create_all(self.engine)
         self.SessionFactory = sessionmaker(bind=self.engine, expire_on_commit=False)
 
@@ -170,6 +184,22 @@ class SQLiteSessionRepository(ISessionRepository):
             db.commit()
             return message
 
+    def get_messages(self, session_id: str) -> List[Message]:
+        """Retrieve all messages for a session ordered chronologically."""
+        with self.SessionFactory() as db:
+            stmt = select(MessageRecord).where(MessageRecord.session_id == session_id).order_by(MessageRecord.timestamp)
+            records = db.scalars(stmt).all()
+            return [
+                Message(
+                    id=m.id,
+                    session_id=m.session_id,
+                    role=MessageRole(m.role),
+                    content=m.content,
+                    timestamp=m.timestamp,
+                )
+                for m in records
+            ]
+
     def add_trace_step(self, trace: TraceStep) -> TraceStep:
         """Persist a single trace step record."""
         with self.SessionFactory() as db:
@@ -190,6 +220,25 @@ class SQLiteSessionRepository(ISessionRepository):
             db.add(t_record)
             db.commit()
             return trace
+
+    def get_traces(self, session_id: str) -> List[TraceStep]:
+        """Retrieve all reasoning trace steps for a session ordered by step_index."""
+        with self.SessionFactory() as db:
+            stmt = select(TraceStepRecord).where(TraceStepRecord.session_id == session_id).order_by(TraceStepRecord.step_index)
+            records = db.scalars(stmt).all()
+            return [
+                TraceStep(
+                    id=t.id,
+                    session_id=t.session_id,
+                    step_index=t.step_index,
+                    thought=t.thought,
+                    code=t.code,
+                    stdout=t.stdout,
+                    stderr=t.stderr,
+                    duration_seconds=t.duration_seconds,
+                )
+                for t in records
+            ]
 
     def add_artifact(self, artifact: Artifact) -> Artifact:
         """Persist a single artifact record."""
@@ -222,3 +271,55 @@ class SQLiteSessionRepository(ISessionRepository):
                 storage_path=record.storage_path,
                 created_at=record.created_at,
             )
+
+    def get_artifacts(self, session_id: str) -> List[Artifact]:
+        """Retrieve all artifacts associated with a session."""
+        with self.SessionFactory() as db:
+            stmt = select(ArtifactRecord).where(ArtifactRecord.session_id == session_id).order_by(ArtifactRecord.created_at)
+            records = db.scalars(stmt).all()
+            return [
+                Artifact(
+                    id=a.id,
+                    session_id=a.session_id,
+                    file_name=a.file_name,
+                    storage_path=a.storage_path,
+                    created_at=a.created_at,
+                )
+                for a in records
+            ]
+
+    def get_session_history(self, session_id: str) -> Dict[str, Any]:
+        """Retrieve complete session history formatted with structured reasoning trace."""
+        session = self.get_session(session_id)
+        if not session:
+            return {}
+
+        return {
+            "session_id": session.id,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+            "dataset_path": session.dataset_path,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role.value,
+                    "content": m.content,
+                    "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+                }
+                for m in session.messages
+            ],
+            "trace": session.get_structured_traces(),
+            "artifacts": [
+                {
+                    "id": a.id,
+                    "file_name": a.file_name,
+                    "storage_path": a.storage_path,
+                    "created_at": a.created_at.isoformat() if a.created_at else None,
+                }
+                for a in session.artifacts
+            ],
+        }
+
+    def close(self) -> None:
+        """Dispose connection pool and close idle database connections."""
+        self.engine.dispose()

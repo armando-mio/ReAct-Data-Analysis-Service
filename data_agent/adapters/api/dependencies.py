@@ -2,7 +2,8 @@
 
 import os
 from functools import lru_cache
-from typing import Optional
+from typing import Generator, Optional
+from fastapi import Depends
 from dotenv import load_dotenv
 
 # Automatically load .env file if present, overriding existing cached env vars
@@ -52,20 +53,20 @@ class Container:
         """Override LLM client (e.g. for testing)."""
         self.llm_client = client
 
-    def get_analyze_use_case(self) -> AnalyzeDataUseCase:
+    def get_analyze_use_case(self, repo: Optional[ISessionRepository] = None) -> AnalyzeDataUseCase:
         """Create AnalyzeDataUseCase with current configured adapters."""
         return AnalyzeDataUseCase(
             llm_client=self.llm_client,
             sandbox_runner=self.sandbox_runner,
-            repository=self.repository,
+            repository=repo or self.repository,
             storage=self.storage,
             uploads_dir=self.uploads_dir,
         )
 
-    def get_manage_session_use_case(self) -> ManageSessionUseCase:
+    def get_manage_session_use_case(self, repo: Optional[ISessionRepository] = None) -> ManageSessionUseCase:
         """Create ManageSessionUseCase with current configured adapters."""
         return ManageSessionUseCase(
-            repository=self.repository,
+            repository=repo or self.repository,
             storage=self.storage,
         )
 
@@ -81,11 +82,29 @@ def get_container() -> Container:
     return _container_instance
 
 
-def get_analyze_use_case() -> AnalyzeDataUseCase:
+def get_repository() -> Generator[ISessionRepository, None, None]:
+    """FastAPI generator dependency providing a session repository with guaranteed per-request cleanup."""
+    container = get_container()
+    repo = container.repository
+    try:
+        yield repo
+    finally:
+        repo.close()
+
+
+def get_analyze_use_case(
+    repo: ISessionRepository = Depends(get_repository),
+) -> AnalyzeDataUseCase:
     """FastAPI dependency provider for AnalyzeDataUseCase."""
-    return get_container().get_analyze_use_case()
+    container = get_container()
+    actual_repo = repo if isinstance(repo, ISessionRepository) else container.repository
+    return container.get_analyze_use_case(repo=actual_repo)
 
 
-def get_manage_session_use_case() -> ManageSessionUseCase:
+def get_manage_session_use_case(
+    repo: ISessionRepository = Depends(get_repository),
+) -> ManageSessionUseCase:
     """FastAPI dependency provider for ManageSessionUseCase."""
-    return get_container().get_manage_session_use_case()
+    container = get_container()
+    actual_repo = repo if isinstance(repo, ISessionRepository) else container.repository
+    return container.get_manage_session_use_case(repo=actual_repo)
