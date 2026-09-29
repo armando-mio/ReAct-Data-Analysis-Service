@@ -23,7 +23,7 @@ class StructuredJSONFormatter(logging.Formatter):
         }
 
         # Contextual audit fields
-        for attr in ("session_id", "step_index", "action_type", "execution_time_ms"):
+        for attr in ("session_id", "step_index", "step", "action_type", "execution_time_ms"):
             val = getattr(record, attr, None)
             if val is not None:
                 log_payload[attr] = val
