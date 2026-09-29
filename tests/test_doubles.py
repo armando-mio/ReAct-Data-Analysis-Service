@@ -1,12 +1,12 @@
-"""Deterministic Mock LLM adapter for offline testing and self-healing verification."""
+"""Test doubles adhering to domain ports for deterministic testing."""
 
 from typing import Any, Dict, List, Optional
 from data_agent.core.entities import Artifact, TraceStep
 from data_agent.ports.llm_port import ILLMClient
 
 
-class MockLLMAdapter(ILLMClient):
-    """Deterministic mock implementation of ILLMClient for unit and integration tests."""
+class MockLLMClient(ILLMClient):
+    """Deterministic test double for ILLMClient strictly isolated inside the test suite."""
 
     def __init__(
         self,
@@ -19,7 +19,6 @@ class MockLLMAdapter(ILLMClient):
         self.scripted_codes = list(scripted_codes or [])
         self.scripted_evaluations = list(scripted_evaluations or [])
         self.scripted_summaries = list(scripted_summaries or [])
-
         self.call_history: List[Dict[str, Any]] = []
 
     def plan(
@@ -28,7 +27,7 @@ class MockLLMAdapter(ILLMClient):
         dataset_preview: str,
         history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
-        """Return scripted or default plan."""
+        """Return scripted plan or default analytical plan."""
         self.call_history.append({"method": "plan", "question": question})
         if self.scripted_plans:
             return self.scripted_plans.pop(0)
@@ -46,7 +45,7 @@ class MockLLMAdapter(ILLMClient):
         previous_error: Optional[str] = None,
         previous_code: Optional[str] = None,
     ) -> str:
-        """Return scripted code or default code."""
+        """Return scripted code or deterministic analytical code."""
         self.call_history.append({
             "method": "generate_code",
             "question": question,
@@ -56,19 +55,19 @@ class MockLLMAdapter(ILLMClient):
         if self.scripted_codes:
             return self.scripted_codes.pop(0)
 
-        # Default self-healing demonstration code
+        # Self-healed version upon recovery
         if previous_error:
-            # Self-healed version
             return (
                 "import pandas as pd\n"
                 "import plotly.express as px\n"
                 "df = pd.read_csv('dataset.csv')\n"
                 "print(f'Clean rows count: {len(df)}')\n"
-                "fig = px.bar(df.head(5), title='Recovered Analysis')\n"
+                "num_cols = df.select_dtypes(include='number').columns\n"
+                "val_col = num_cols[0] if len(num_cols) > 0 else df.columns[0]\n"
+                "fig = px.bar(df.head(5), y=val_col, title='Recovered Analysis')\n"
                 "fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
             )
 
-        # Dynamic dataset code inspecting preview
         cat_col = "Category" if "Category" in dataset_preview else ("category" if "category" in dataset_preview else None)
         val_col = "Revenue" if "Revenue" in dataset_preview else ("sales" if "sales" in dataset_preview else None)
 
@@ -88,16 +87,16 @@ class MockLLMAdapter(ILLMClient):
                 "print('Successfully generated Plotly chart: output_plot.html')\n"
             )
 
-        # Standard default code
         return (
             "import pandas as pd\n"
             "import plotly.express as px\n"
             "df = pd.read_csv('dataset.csv')\n"
             "print(f'Total rows: {len(df)}')\n"
-            "fig = px.bar(df.head(5), title='Data Summary')\n"
+            "num_cols = df.select_dtypes(include='number').columns\n"
+            "val_col = num_cols[0] if len(num_cols) > 0 else df.columns[0]\n"
+            "fig = px.bar(df.head(5), y=val_col, title='Data Summary')\n"
             "fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
         )
-
 
     def reflect_and_evaluate(
         self,
@@ -108,7 +107,7 @@ class MockLLMAdapter(ILLMClient):
         stderr: Optional[str],
         has_error: bool,
     ) -> Dict[str, Any]:
-        """Return scripted or deterministic reflection evaluation."""
+        """Return scripted evaluation or deterministic outcome."""
         self.call_history.append({
             "method": "reflect_and_evaluate",
             "has_error": has_error,
@@ -137,7 +136,7 @@ class MockLLMAdapter(ILLMClient):
         traces: List[TraceStep],
         artifacts: List[Artifact],
     ) -> str:
-        """Return scripted or standard summary."""
+        """Return scripted summary or natural language synthesis."""
         self.call_history.append({"method": "summarize", "question": question})
         if self.scripted_summaries:
             return self.scripted_summaries.pop(0)
@@ -148,3 +147,7 @@ class MockLLMAdapter(ILLMClient):
             f"Executed {len(traces)} reasoning step(s). "
             f"Generated artifacts: {', '.join(artifact_mentions) if artifact_mentions else 'None'}."
         )
+
+
+# Backward-compatible alias for test files
+MockLLMAdapter = MockLLMClient

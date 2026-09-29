@@ -148,15 +148,10 @@ def test_dspy_react_agent_instantiation():
     assert "execute_analysis_code" in agent.react.tools
 
 
-def test_container_automatic_mock_fallback(monkeypatch):
-    """Verify Container automatically injects MockLLMAdapter when API key is missing or dummy."""
+def test_container_requires_api_key(monkeypatch):
+    """Verify Container raises ValueError when GEMINI_API_KEY is missing or empty."""
     from data_agent.adapters.api.dependencies import Container
-    from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
 
     monkeypatch.setenv("GEMINI_API_KEY", "")
-    container_empty = Container()
-    assert isinstance(container_empty.llm_client, MockLLMAdapter)
-
-    monkeypatch.setenv("GEMINI_API_KEY", "your_api_key_here")
-    container_dummy = Container()
-    assert isinstance(container_dummy.llm_client, MockLLMAdapter)
+    with pytest.raises(ValueError, match="GEMINI_API_KEY environment variable is required"):
+        Container(gemini_api_key="")

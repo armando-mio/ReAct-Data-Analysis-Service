@@ -3,7 +3,7 @@
 from pathlib import Path
 import pytest
 
-from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
+from tests.test_doubles import MockLLMAdapter
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
 from data_agent.use_cases.react_graph import ReActGraphBuilder
 

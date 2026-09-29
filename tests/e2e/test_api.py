@@ -3,7 +3,7 @@
 import io
 from fastapi.testclient import TestClient
 
-from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
+from tests.test_doubles import MockLLMAdapter
 
 
 def test_post_analyze_with_csv(test_app: TestClient, sample_csv_content: bytes):

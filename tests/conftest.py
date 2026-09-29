@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from data_agent.adapters.api.app import create_app
 from data_agent.adapters.api.dependencies import Container, get_container
-from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
+from tests.test_doubles import MockLLMClient, MockLLMAdapter
 from data_agent.adapters.persistence.sqlite_repository import SQLiteSessionRepository
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
 from data_agent.adapters.storage.local_storage import LocalArtifactStorage
@@ -40,16 +40,19 @@ def sample_csv_file(sample_csv_content: bytes, tmp_path: Path) -> Path:
 @pytest.fixture
 def test_container(tmp_path: Path) -> Container:
     """Isolated dependency injection container for tests."""
-    container = Container()
-    container.db_url = f"sqlite:///{tmp_path / 'test_data_agent.db'}"
+    mock_llm = MockLLMClient()
+    container = Container(
+        gemini_api_key="test-api-key",
+        llm_client=mock_llm,
+        db_url=f"sqlite:///{tmp_path / 'test_data_agent.db'}",
+    )
     container.artifacts_dir = str(tmp_path / "artifacts")
     container.uploads_dir = str(tmp_path / "uploads")
-    container.sandbox_timeout = 5.0
+    container.sandbox_timeout = 15.0
 
     container.storage = LocalArtifactStorage(base_directory=container.artifacts_dir)
     container.repository = SQLiteSessionRepository(db_url=container.db_url)
     container.sandbox_runner = ProcessSandboxRunner(default_timeout=container.sandbox_timeout)
-    container.llm_client = MockLLMAdapter()
 
     return container
 
@@ -59,7 +62,6 @@ def test_app(test_container: Container) -> TestClient:
     """TestClient configured with overridden test container dependencies."""
     app = create_app()
 
-    # Override dependency container
     from data_agent.adapters.api import dependencies
     dependencies._container_instance = test_container
 

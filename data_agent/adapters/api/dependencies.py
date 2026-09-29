@@ -1,17 +1,14 @@
 """Dependency injection container and service factories for FastAPI."""
 
-import os
 from functools import lru_cache
+import os
 from typing import Generator, Optional
-from fastapi import Depends
 from dotenv import load_dotenv
+from fastapi import Depends
 
-# Automatically load .env file if present without overriding explicit environment variables
 load_dotenv(override=False)
 
-
 from data_agent.adapters.llm.gemini_adapter import GeminiLLMAdapter
-from data_agent.adapters.llm.mock_llm_adapter import MockLLMAdapter
 from data_agent.adapters.persistence.sqlite_repository import SQLiteSessionRepository
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
 from data_agent.adapters.storage.local_storage import LocalArtifactStorage
@@ -24,13 +21,14 @@ from data_agent.use_cases.manage_session import ManageSessionUseCase
 
 
 class Container:
-    """Singleton container maintaining shared adapter instances."""
+    """Dependency injection container managing application adapters."""
 
     def __init__(
         self,
         gemini_api_key: Optional[str] = None,
         gemini_model: Optional[str] = None,
         db_url: Optional[str] = None,
+        llm_client: Optional[ILLMClient] = None,
     ) -> None:
         load_dotenv(override=False)
         self.db_url = db_url or os.getenv("DATABASE_URL", "sqlite:///storage/data_agent.db")
@@ -45,35 +43,19 @@ class Container:
         self.repository: ISessionRepository = SQLiteSessionRepository(db_url=self.db_url)
         self.sandbox_runner: ISandboxRunner = ProcessSandboxRunner(default_timeout=self.sandbox_timeout)
 
-        # Configurable LLM client (defaults to Gemini if API key is present, otherwise MockLLMAdapter for tests/offline)
-        is_missing_or_dummy_key = (
-            not self.gemini_api_key
-            or not self.gemini_api_key.strip()
-            or self.gemini_api_key.strip().lower() in ("your_api_key_here", "your-api-key-here", "none", "dummy", "placeholder")
-        )
-
-        import logging
-        llm_logger = logging.getLogger("data_agent.adapters.llm")
-
-        if is_missing_or_dummy_key:
-            llm_logger.warning(
-                "Nessuna chiave API rilevata per il provider LLM. Attivazione automatica di MockLLMAdapter per esecuzione locale/test"
-            )
-            self.llm_client: ILLMClient = MockLLMAdapter()
+        # Strict LLM client initialization
+        if llm_client is not None:
+            self.llm_client: ILLMClient = llm_client
         else:
-            try:
-                self.llm_client: ILLMClient = GeminiLLMAdapter(
-                    api_key=self.gemini_api_key,
-                    model_name=self.gemini_model,
-                )
-            except Exception as exc:
-                llm_logger.warning(
-                    f"Inizializzazione GeminiLLMAdapter non riuscita ({exc}). Attivazione automatica di MockLLMAdapter per esecuzione locale/test"
-                )
-                self.llm_client = MockLLMAdapter()
+            if not self.gemini_api_key or not self.gemini_api_key.strip():
+                raise ValueError("GEMINI_API_KEY environment variable is required")
+            self.llm_client = GeminiLLMAdapter(
+                api_key=self.gemini_api_key,
+                model_name=self.gemini_model,
+            )
 
     def set_llm_client(self, client: ILLMClient) -> None:
-        """Override LLM client (e.g. for testing)."""
+        """Override LLM client."""
         self.llm_client = client
 
     def get_analyze_use_case(self, repo: Optional[ISessionRepository] = None) -> AnalyzeDataUseCase:
