@@ -57,12 +57,25 @@ class SandboxTimeoutError(SandboxExecutionError):
         self.timeout_seconds = timeout_seconds
 
 
+class ExecutionTimeoutError(SandboxTimeoutError):
+    """Domain exception raised when process execution exceeds the safety timeout."""
+    pass
+
+
 class SandboxSecurityError(SandboxExecutionError):
     """Raised when code violates sandbox security policy (e.g. unauthorized network access)."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(f"Sandbox security violation: {reason}", {"reason": reason})
         self.reason = reason
+
+
+class NetworkAccessBlockedError(SandboxSecurityError, PermissionError):
+    """Raised when sandbox execution attempts external network access."""
+
+    def __init__(self, message: str = "External network access is blocked by sandbox security policy.") -> None:
+        super().__init__(message)
+        self.message = message
 
 
 class LLMExecutionError(DomainError):

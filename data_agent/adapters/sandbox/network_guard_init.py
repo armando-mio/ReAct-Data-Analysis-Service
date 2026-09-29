@@ -1,13 +1,4 @@
-"""Network security guard snippet and autonomous initialization hook.
-
-Neutralizes cross-platform network socket calls and HTTP libraries to prevent external communication.
-Raises NetworkAccessBlockedError upon any attempt to access the network.
-"""
-
-from pathlib import Path
-
-BOOTSTRAP_NETWORK_GUARD = '''# Sandbox Security Guard - Network Isolation
-import sys
+"""Standalone network security guard hook for subprocess isolation."""
 
 # Define NetworkAccessBlockedError matching domain exception hierarchy
 class NetworkAccessBlockedError(PermissionError):
@@ -57,19 +48,3 @@ try:
     _plt.show = lambda *args, **kwargs: None
 except Exception:
     pass
-'''
-
-
-def write_network_guard_init(destination_dir: Path) -> Path:
-    """Write standalone network guard init script into the target directory.
-
-    Writes both `network_guard_init.py` and `sitecustomize.py` so Python
-    deterministically executes the security hooks before running any untrusted script.
-    """
-    guard_file = destination_dir / "network_guard_init.py"
-    guard_file.write_text(BOOTSTRAP_NETWORK_GUARD, encoding="utf-8")
-
-    sitecustomize_file = destination_dir / "sitecustomize.py"
-    sitecustomize_file.write_text(BOOTSTRAP_NETWORK_GUARD, encoding="utf-8")
-
-    return guard_file

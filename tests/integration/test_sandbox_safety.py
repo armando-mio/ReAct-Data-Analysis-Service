@@ -5,20 +5,21 @@ import time
 import pytest
 
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
-from data_agent.core.exceptions import SandboxTimeoutError
+from data_agent.core.exceptions import ExecutionTimeoutError, SandboxTimeoutError
 
 
 def test_sandbox_timeout_enforcement():
-    """Verify that an infinite loop process is killed and triggers SandboxTimeoutError."""
+    """Verify that an infinite loop process is killed and triggers ExecutionTimeoutError."""
     sandbox = ProcessSandboxRunner(default_timeout=1.5)
     infinite_loop_code = "while True:\n    pass\n"
 
     start_time = time.perf_counter()
-    with pytest.raises(SandboxTimeoutError) as exc_info:
+    with pytest.raises(ExecutionTimeoutError) as exc_info:
         sandbox.execute(code=infinite_loop_code, timeout=1.5)
     elapsed = time.perf_counter() - start_time
 
     assert exc_info.value.timeout_seconds == 1.5
+    assert isinstance(exc_info.value, SandboxTimeoutError)
     # The elapsed time should be close to 1.5 seconds, proving timely termination
     assert elapsed >= 1.4 and elapsed < 4.0
 
@@ -34,7 +35,7 @@ def test_sandbox_network_blocking_socket():
 
     result = sandbox.execute(code=network_attempt_code)
     assert not result.is_success
-    assert "PermissionError" in result.stderr
+    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr)
     assert "External network access is blocked by sandbox security policy" in result.stderr
     assert result.security_violation is not None
 
@@ -49,8 +50,27 @@ def test_sandbox_network_blocking_urllib():
 
     result = sandbox.execute(code=urllib_code)
     assert not result.is_success
-    assert "PermissionError" in result.stderr
+    assert ("PermissionError" in result.stderr or "NetworkAccessBlockedError" in result.stderr)
     assert "External network access is blocked by sandbox security policy" in result.stderr
+
+
+def test_sandbox_fig_show_neutralized():
+    """Verify that fig.show() calls are safely neutralized and do not block execution."""
+    sandbox = ProcessSandboxRunner(default_timeout=5.0)
+    code = (
+        "import plotly.express as px\n"
+        "import pandas as pd\n"
+        "df = pd.DataFrame({'x': [1, 2], 'y': [3, 4]})\n"
+        "fig = px.bar(df, x='x', y='y')\n"
+        "fig.show()\n"
+        "fig.write_html('test_plot.html')\n"
+        "print('Execution completed without blocking')\n"
+    )
+
+    result = sandbox.execute(code=code)
+    assert result.is_success
+    assert "Execution completed without blocking" in result.stdout
+    assert len(result.generated_html_files) == 1
 
 
 def test_sandbox_file_isolation(tmp_path: Path):
