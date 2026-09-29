@@ -23,6 +23,11 @@ from data_agent.core.exceptions import (
 )
 
 from data_agent.core.utils import clean_code_snippet, extract_python_code
+from data_agent.core.logging import (
+    StructuredJSONFormatter,
+    configure_structured_logging,
+    get_logger,
+)
 
 __all__ = [
     "Session",
@@ -44,4 +49,7 @@ __all__ = [
     "MaxIterationsReachedError",
     "clean_code_snippet",
     "extract_python_code",
+    "StructuredJSONFormatter",
+    "configure_structured_logging",
+    "get_logger",
 ]

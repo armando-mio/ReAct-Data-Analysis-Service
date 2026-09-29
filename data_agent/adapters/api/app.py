@@ -20,33 +20,9 @@ from data_agent.core.exceptions import (
 )
 
 
-class StructuredJSONFormatter(logging.Formatter):
-    """Formats log records as single-line JSON objects."""
+from data_agent.core.logging import configure_structured_logging, get_logger
 
-    def format(self, record: logging.LogRecord) -> str:
-        log_payload = {
-            "timestamp": self.formatTime(record, self.datefmt),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-        }
-        if record.exc_info:
-            log_payload["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_payload)
-
-
-def configure_structured_logging() -> None:
-    """Configure root logger with structured JSON handler."""
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(StructuredJSONFormatter())
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    # Avoid duplicate handlers on re-calls
-    if not any(isinstance(h, logging.StreamHandler) for h in root_logger.handlers):
-        root_logger.addHandler(handler)
-
-
-logger = logging.getLogger("data_agent.api")
+logger = get_logger("data_agent.api")
 
 
 def create_app() -> FastAPI:
@@ -78,7 +54,11 @@ def create_app() -> FastAPI:
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
         logger.info(
-            f"HTTP {request.method} {request.url.path} responded {response.status_code} in {duration_ms}ms"
+            f"HTTP {request.method} {request.url.path} responded {response.status_code} in {duration_ms}ms",
+            extra={
+                "action_type": "http_request",
+                "execution_time_ms": duration_ms,
+            },
         )
         return response
 

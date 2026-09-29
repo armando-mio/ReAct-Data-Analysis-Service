@@ -143,3 +143,38 @@ def test_extract_python_code_conversational_no_backticks():
     # Also verify backward-compatible clean_code_snippet alias
     alias_code = clean_code_snippet(raw)
     assert alias_code == code
+
+
+def test_structured_json_logging():
+    """Verify StructuredJSONFormatter serializes records and contextual audit fields."""
+    import json
+    import logging
+    from data_agent.core.logging import StructuredJSONFormatter
+
+    formatter = StructuredJSONFormatter()
+    record = logging.LogRecord(
+        name="test_logger",
+        level=logging.INFO,
+        pathname="test_path.py",
+        lineno=42,
+        msg="Executing step",
+        args=(),
+        exc_info=None,
+    )
+    record.session_id = "test-session-123"
+    record.step_index = 2
+    record.action_type = "sandbox_execution"
+    record.execution_time_ms = 145.8
+
+    output = formatter.format(record)
+    parsed = json.loads(output)
+
+    assert parsed["level"] == "INFO"
+    assert parsed["logger"] == "test_logger"
+    assert parsed["message"] == "Executing step"
+    assert parsed["session_id"] == "test-session-123"
+    assert parsed["step_index"] == 2
+    assert parsed["action_type"] == "sandbox_execution"
+    assert parsed["execution_time_ms"] == 145.8
+    assert "timestamp" in parsed
+

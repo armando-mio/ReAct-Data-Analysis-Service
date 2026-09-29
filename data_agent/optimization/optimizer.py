@@ -23,11 +23,14 @@ from data_agent.adapters.llm.dspy_modules import (
     PlanSignature,
 )
 from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
+from data_agent.core.logging import get_logger
 from data_agent.optimization.dev_set import get_dev_set
 from data_agent.optimization.metrics import (
     code_and_plot_execution_metric,
     evaluate_execution_score,
 )
+
+logger = get_logger("data_agent.optimization")
 
 
 @dataclass
@@ -142,7 +145,7 @@ class PromptOptimizationRunner:
         scores = []
 
         for i, ex in enumerate(dev_set):
-            print(f"  [Eval {i+1}/{len(dev_set)}] {ex.question[:55]}...", flush=True)
+            logger.info(f"  [Eval {i+1}/{len(dev_set)}] {ex.question[:55]}...")
             try:
                 pred = module(
                     question=ex.question,
@@ -158,7 +161,7 @@ class PromptOptimizationRunner:
                     expected_keywords=getattr(ex, "expected_keywords", None),
                 )
                 scores.append(score)
-                print(f"    -> Score: {score:.2f} (HTML: {diag.get('html_generated', False)})", flush=True)
+                logger.info(f"    -> Score: {score:.2f} (HTML: {diag.get('html_generated', False)})")
                 results.append({
                     "question": ex.question,
                     "score": score,
@@ -170,7 +173,7 @@ class PromptOptimizationRunner:
                 })
             except Exception as exc:
                 scores.append(0.0)
-                print(f"    -> Error: {exc}", flush=True)
+                logger.info(f"    -> Error: {exc}")
                 results.append({
                     "question": ex.question,
                     "score": 0.0,
@@ -196,12 +199,12 @@ class PromptOptimizationRunner:
         dev_set = get_dev_set(dataset_path=dataset_path)
 
         # 1. Baseline Module & Evaluation
-        print(f"\n1. Evaluating Baseline Prompt on {len(dev_set)} dev queries...", flush=True)
+        logger.info(f"1. Evaluating Baseline Prompt on {len(dev_set)} dev queries...")
         student = DataAnalysisReActModule()
         baseline_score, baseline_details = self.evaluate_module(
             student, dev_set, dataset_path=dataset_path
         )
-        print(f"   Baseline Average Score: {baseline_score * 100:.1f}%\n", flush=True)
+        logger.info(f"   Baseline Average Score: {baseline_score * 100:.1f}%")
 
         # 2. Extract original instructions
         original_instructions = {}
@@ -212,7 +215,7 @@ class PromptOptimizationRunner:
         optimizer_used = f"DSPy {optimizer_type.upper()}"
 
         # 3. Run Optimization
-        print(f"2. Running Reflective Prompt Optimization with {optimizer_type.upper()}...", flush=True)
+        logger.info(f"2. Running Reflective Prompt Optimization with {optimizer_type.upper()}...")
         if not self.use_mock and self.api_key:
             try:
                 trainset = dev_set[:3]
@@ -347,7 +350,7 @@ def main():
     parser.add_argument("--output", type=str, default="storage/prompt_optimization_report.json", help="Report output file")
     args = parser.parse_args()
 
-    print(f"Starting DSPy Prompt Optimization (Optimizer: {args.optimizer.upper()}, Mock: {args.mock})...")
+    logger.info(f"Starting DSPy Prompt Optimization (Optimizer: {args.optimizer.upper()}, Mock: {args.mock})...")
     runner = PromptOptimizationRunner(use_mock=args.mock)
     report = runner.run_optimization(
         max_metric_calls=args.max_calls,
@@ -361,18 +364,18 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(asdict(report), f, indent=2)
 
-    print("\n" + "=" * 60)
-    print("PROMPT OPTIMIZATION REPORT")
-    print("=" * 60)
-    print(f"Optimizer:          {report.optimizer_name}")
-    print(f"Model:              {report.model_name}")
-    print(f"Dev Set Size:       {report.dev_set_size} questions")
-    print(f"Baseline Score:     {report.baseline_avg_score * 100:.1f}%")
-    print(f"Optimized Score:    {report.optimized_avg_score * 100:.1f}%")
-    print(f"Improvement:        +{report.relative_improvement_pct:.1f}%")
-    print(f"Duration:           {report.duration_seconds:.2f}s")
-    print(f"Report Saved To:    {out_path}")
-    print("=" * 60)
+    logger.info("=" * 60)
+    logger.info("PROMPT OPTIMIZATION REPORT")
+    logger.info("=" * 60)
+    logger.info(f"Optimizer:          {report.optimizer_name}")
+    logger.info(f"Model:              {report.model_name}")
+    logger.info(f"Dev Set Size:       {report.dev_set_size} questions")
+    logger.info(f"Baseline Score:     {report.baseline_avg_score * 100:.1f}%")
+    logger.info(f"Optimized Score:    {report.optimized_avg_score * 100:.1f}%")
+    logger.info(f"Improvement:        +{report.relative_improvement_pct:.1f}%")
+    logger.info(f"Duration:           {report.duration_seconds:.2f}s")
+    logger.info(f"Report Saved To:    {out_path}")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":
