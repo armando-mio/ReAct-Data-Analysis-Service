@@ -74,3 +74,72 @@ def test_domain_exceptions():
 
     sec_err = SandboxSecurityError("Socket connect blocked")
     assert sec_err.reason == "Socket connect blocked"
+
+
+def test_extract_python_code_standard_fenced():
+    """Verify extraction from standard ```python ... ``` markdown blocks."""
+    from data_agent.core.utils import extract_python_code
+    raw = (
+        "Here is the solution:\n"
+        "```python\n"
+        "import pandas as pd\n"
+        "df = pd.read_csv('dataset.csv')\n"
+        "print(df.shape)\n"
+        "```\n"
+        "Hope this helps!"
+    )
+    code = extract_python_code(raw)
+    assert code == "import pandas as pd\ndf = pd.read_csv('dataset.csv')\nprint(df.shape)"
+
+
+def test_extract_python_code_generic_fenced():
+    """Verify extraction from generic ``` ... ``` blocks without language tag."""
+    from data_agent.core.utils import extract_python_code
+    raw = (
+        "```\n"
+        "import numpy as np\n"
+        "arr = np.array([1, 2, 3])\n"
+        "print(arr.sum())\n"
+        "```"
+    )
+    code = extract_python_code(raw)
+    assert code == "import numpy as np\narr = np.array([1, 2, 3])\nprint(arr.sum())"
+
+
+def test_extract_python_code_unclosed_backticks():
+    """Verify extraction when LLM output is truncated and lacks closing backticks."""
+    from data_agent.core.utils import extract_python_code
+    raw = (
+        "```python\n"
+        "import pandas as pd\n"
+        "import plotly.express as px\n"
+        "df = pd.read_csv('dataset.csv')\n"
+        "fig = px.bar(df, x='category', y='sales')\n"
+        "fig.write_html('output.html', include_plotlyjs='cdn')"
+    )
+    code = extract_python_code(raw)
+    assert "import pandas as pd" in code
+    assert "fig.write_html('output.html', include_plotlyjs='cdn')" in code
+    assert "```" not in code
+
+
+def test_extract_python_code_conversational_no_backticks():
+    """Verify extraction when code is presented conversationally without any markdown backticks."""
+    from data_agent.core.utils import extract_python_code, clean_code_snippet
+    raw = (
+        "Sure, here is the analytical script to process your query:\n"
+        "import pandas as pd\n"
+        "df = pd.read_csv('dataset.csv')\n"
+        "summary = df.groupby('category')['revenue'].sum()\n"
+        "print(summary)\n"
+        "Note: make sure plotly is installed."
+    )
+    code = extract_python_code(raw)
+    assert "import pandas as pd" in code
+    assert "print(summary)" in code
+    assert "Sure, here is" not in code
+    assert "Note: make sure" not in code
+
+    # Also verify backward-compatible clean_code_snippet alias
+    alias_code = clean_code_snippet(raw)
+    assert alias_code == code

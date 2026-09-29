@@ -10,7 +10,7 @@ from data_agent.core.exceptions import LLMExecutionError
 from data_agent.ports.llm_port import ILLMClient
 
 
-from data_agent.core.utils import clean_code_snippet
+from data_agent.core.utils import clean_code_snippet, extract_python_code
 
 
 class PlanSignature(dspy.Signature):
@@ -25,7 +25,8 @@ class CodeGenerationSignature(dspy.Signature):
     """Generate standalone, runnable Python code using pandas, numpy, and plotly.
     The script must load the dataset from 'dataset.csv' (or path provided in scope),
     compute all requested aggregations and metrics, print clear insights to stdout,
-    and create an interactive Plotly visualization saved to an HTML file via fig.write_html('plot.html').
+    and create an interactive Plotly visualization saved to an HTML file via fig.write_html('output.html', include_plotlyjs='cdn').
+    REGOLA TASSATIVA: NON chiamare MAI fig.show(). Salva sempre la figura su disco in formato HTML interattivo con fig.write_html('output.html', include_plotlyjs='cdn').
     Never use plt.show() or input(). Avoid syntax errors and handle missing data gracefully.
     """
 
@@ -98,7 +99,7 @@ class DataAnalysisReActModule(dspy.Module):
                 previous_code=prev_code,
             )
             raw_code = getattr(code_pred, "code", "")
-            code = clean_code_snippet(raw_code)
+            code = extract_python_code(raw_code)
 
             if sandbox_runner is not None and dataset_path is not None:
                 res = sandbox_runner.execute(code=code, dataset_path=dataset_path)
@@ -188,7 +189,7 @@ class DSPyLLMAdapter(ILLMClient):
                 previous_code=previous_code or "None",
             )
             raw = getattr(res, "code", "")
-            return clean_code_snippet(raw)
+            return extract_python_code(raw)
         except Exception as exc:
             raise LLMExecutionError(f"DSPy code generation error: {exc}") from exc
 
@@ -267,12 +268,13 @@ class DSPyReActAgent(dspy.Module):
 
         def execute_analysis_code(code: str) -> str:
             """Execute Python analysis script in the isolated sandbox.
-            Reads data from 'dataset.csv' and creates an interactive Plotly HTML visualization via fig.write_html('plot.html').
+            Reads data from 'dataset.csv' and creates an interactive Plotly HTML visualization.
+            REGOLA TASSATIVA: NON chiamare MAI fig.show(). Salva sempre con fig.write_html('output.html', include_plotlyjs='cdn').
             Returns stdout, errors, and generated files.
             """
             from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner
             runner = self.sandbox_runner or ProcessSandboxRunner()
-            cleaned = clean_code_snippet(code)
+            cleaned = extract_python_code(code)
             res = runner.execute(code=cleaned, dataset_path=self.dataset_path)
             html_names = [f for f, _ in res.generated_html_files]
             if not res.is_success:

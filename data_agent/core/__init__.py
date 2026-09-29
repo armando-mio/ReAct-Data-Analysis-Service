@@ -22,7 +22,7 @@ from data_agent.core.exceptions import (
     SessionNotFoundError,
 )
 
-from data_agent.core.utils import clean_code_snippet
+from data_agent.core.utils import clean_code_snippet, extract_python_code
 
 __all__ = [
     "Session",
@@ -43,4 +43,5 @@ __all__ = [
     "LLMExecutionError",
     "MaxIterationsReachedError",
     "clean_code_snippet",
+    "extract_python_code",
 ]
