@@ -1,176 +1,229 @@
-# System Execution & Testing Instructions
+# Operational Runbook & Execution Instructions
 
-This document provides operational instructions to run, test, and verify the **ReAct Data Analysis Service**, fulfilling deliverables **#4 (Instructions to start the system with `docker compose up`)** and **#5 (Command to run the test suite)**.
+This operational guide provides step-by-step instructions to configure, run, and evaluate the **ReAct Data Analysis Service**.
 
 ---
 
-## 1. Start the System with Docker Compose (`docker compose up`)
+## 1. Prerequisites
 
-The entire production service is containerized with a strict memory limit of **1024MB** and persistent host volume mounts for datasets and artifacts.
+Before evaluating or running the application, ensure the following tooling is available on your host environment:
+- **Python 3.11+** (tested and verified on Python 3.11 – 3.14)
+- **Docker** & **Docker Compose** (v2.0+)
+- **cURL** or an HTTP client (e.g. Postman, HTTPie)
+- A valid **Google Gemini API Key** (obtainable from Google AI Studio)
 
-### Prerequisites
-- Docker & Docker Compose installed.
+---
 
-### Steps to Run
+## 2. Environment Configuration
 
-1. **Configure Environment Variables**:
-   Ensure `.env` exists in the project root with your Gemini API key and model:
+The application strictly requires a valid Gemini API key to operate in live execution mode.
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/armando-mio/AI-ML-Engineer-Technical-Assignment.git
+   cd AI-ML-Engineer-Technical-Assignment
+   ```
+
+2. **Initialize the environment file**:
    ```bash
    cp .env.example .env
    ```
-   Edit `.env`:
+
+3. **Configure the API key in `.env`**:
+   Open `.env` in an editor and set your key:
    ```env
-   GEMINI_API_KEY=your_gemini_api_key_here
-   GEMINI_MODEL=gemini-3.6-flash
+   # Google Gemini API Configuration (Mandatory for live LLM operations)
+   GEMINI_API_KEY=your_actual_gemini_api_key_here
+   GEMINI_MODEL=gemini-3.1-flash-lite
+
+   # SQLite Database Connection
+   DATABASE_URL=sqlite:///storage/data_agent.db
+
+   # Storage Directories
+   ARTIFACTS_DIR=storage/artifacts
+   UPLOADS_DIR=storage/uploads
+
+   # Sandbox Safety Threshold (seconds)
+   SANDBOX_TIMEOUT=15.0
    ```
 
-2. **Start the Service**:
-   Run the following command in the repository root:
-   ```bash
-   docker compose up --build -d
-   ```
-
-3. **Verify Service Health**:
-   Check container logs:
-   ```bash
-   docker compose logs -f
-   ```
-   Check the health endpoint:
-   ```bash
-   curl http://localhost:8000/health
-   ```
-   *Expected response*: `{"status":"healthy","service":"react-data-agent","version":"1.0.0"}`
-
-4. **Access the Interactive API Documentation**:
-   Open your browser at:
-   👉 **[http://localhost:8000/docs](http://localhost:8000/docs)** (Swagger UI)
-
-5. **Stop the Service**:
-   ```bash
-   docker compose down
-   ```
+> **Note**: If `GEMINI_API_KEY` is omitted or empty on startup, the application deliberately raises a fatal configuration error (`ValueError: GEMINI_API_KEY environment variable is required`), preventing silent degradation or unexpected failures.
 
 ---
 
-## 2. Command to Run the Test Suite (`pytest`)
+## 3. Quickstart with Docker (Primary Evaluation Path)
 
-The automated test suite covers the agent loop (with mocked LLM), sandbox security guarantees (timeout and network blocking), SQLite persistence, and full FastAPI API contracts.
+Docker Compose provides the simplest, zero-configuration evaluation path. It encapsulates all system dependencies, volume persistence, and networking.
 
-### Command to Run All Tests:
-
+### Build and Start Containers
 ```bash
-python -m pytest -v
+docker compose up --build
+```
+*(To run in detached/background mode, append `-d`)*
+
+### Verify Service Health
+In a separate terminal, test the health check endpoint:
+```bash
+curl -s http://localhost:8000/health
+```
+**Expected response**:
+```json
+{"status":"healthy","service":"react-data-agent","version":"1.0.0"}
 ```
 
-Or with fail-fast mode:
+### Access API Documentation
+Open your web browser and navigate to:
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+### Stop the Service
 ```bash
-python -m pytest --maxfail=1 -v
+docker compose down
 ```
-
-### Targeted Test Commands:
-
-- **Run ReAct Loop & Self-Healing Unit Tests**:
-  ```bash
-  python -m pytest tests/unit/test_react_loop.py -v
-  ```
-- **Run Sandbox Safety & Isolation Tests (Timeout + Network Neutralization)**:
-  ```bash
-  python -m pytest tests/integration/test_sandbox_safety.py -v
-  ```
-- **Run SQLite Repository Persistence Tests**:
-  ```bash
-  python -m pytest tests/integration/test_repository.py -v
-  ```
-- **Run End-to-End API Contract Tests**:
-  ```bash
-  python -m pytest tests/e2e/test_api.py -v
-  ```
-- **Run 20-Query Progressive Complexity E2E Suite**:
-  ```bash
-  python -m pytest tests/e2e/test_progressive_queries.py -v
-  ```
 
 ---
 
-## 3. Native Virtualenv Setup (Alternative to Docker)
+## 4. Local Development Setup
 
-If you prefer to run the service natively without Docker:
+If you prefer to run the service natively outside of Docker:
 
-1. **Create and Activate Virtual Environment**:
+1. **Create and activate a virtual environment**:
    ```bash
-   python -m venv .venv
-   # Windows:
-   .venv\Scripts\activate
-   # Linux / macOS:
+   # Linux / macOS
+   python3 -m venv .venv
    source .venv/bin/activate
+
+   # Windows (PowerShell)
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
    ```
 
-2. **Install Dependencies**:
+2. **Install project dependencies**:
    ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
 
-3. **Run the FastAPI Server**:
+3. **Launch the development server with live reload**:
    ```bash
-   python -m uvicorn data_agent.adapters.api.app:app --host 0.0.0.0 --port 8000 --reload
+   uvicorn data_agent.adapters.api.app:app --host 0.0.0.0 --port 8000 --reload
    ```
+
+The service will start listening on `http://localhost:8000`.
 
 ---
 
-## 4. Testing the API Endpoints
+## 5. Running the Automated Test Suite
 
-A sample transactional dataset with 50 rows and 4 columns is provided at [`data/sample_sales.csv`](data/sample_sales.csv).
+The test suite validates the entire architecture without making external network calls or requiring active API keys. Non-deterministic LLM behavior is isolated using deterministic test doubles strictly confined to `tests/`.
 
-### A. Run Analysis via cURL (`POST /analyze`)
-> **Autonomous Plotly Generation**: You do **not** need to request a chart or mention Plotly in your query. The ReAct LLM agent autonomously interprets the data, plans the best visual representation, and generates an interactive Plotly chart (`output_plot.html`) as an intrinsic feature of the service.
+### Run All Tests
+```bash
+pytest -v tests/
+```
+
+### Test Hierarchy
+The test suite consists of 60 automated tests divided into three cohesive layers:
+
+1. **Unit Tests (`tests/unit/`)**:
+   - `test_domain.py`: Validates pure domain models (`Session`, `TraceStep`, `Artifact`, `MessageRole`), exception hierarchies, code sanitizer/extractor, and structured JSON log formatting.
+   - `test_dspy_modules.py`: Verifies DSPy signature declarations, predictor wiring, and container configuration guards.
+   - `test_react_loop.py`: Validates the LangGraph ReAct state machine, Plan -> Act -> Observe -> Iterate cycles, and self-healing recovery upon code execution errors.
+
+2. **Integration Tests (`tests/integration/`)**:
+   - `test_sandbox_safety.py`: Validates process-level execution timeout enforcement, deterministic network neutralization (blocking raw sockets and `urllib`), and neutralization of interactive GUI calls (`fig.show()`, `plt.show()`).
+   - `test_repository.py`: Verifies SQLite transactional persistence, WAL mode concurrency, multi-turn message appending, and trace serialization.
+   - `test_dspy_optimization.py`: Verifies the dev set construction, multi-aspect scoring metric, and offline prompt optimization runner.
+
+3. **End-to-End Tests (`tests/e2e/`)**:
+   - `test_api.py`: Validates the complete HTTP contract (`POST /analyze`, `GET /sessions/{id}`, `GET /artifacts/{id}`), file upload handling, error mapping, and missing entity 404 responses.
+   - `test_progressive_queries.py`: Executes 20 progressive analytical queries against `data/sample_sales.csv` through the full sandbox pipeline, followed by multi-turn conversation continuity tests.
+
+---
+
+## 6. API Usage & Example Workflows
+
+The following concrete `curl` commands illustrate key operational workflows.
+
+### Workflow 1: Start a New Analytical Session
+Submit a tabular question along with the included sample sales CSV dataset:
 
 ```bash
 curl -X POST "http://localhost:8000/analyze" \
-  -F "question=Which category generated the highest total revenue?" \
-  -F "file=@data/sample_sales.csv"
+  -F "question=What is the total revenue and units sold by category? Generate an interactive chart." \
+  -F "file=@data/sample_sales.csv;type=text/csv"
 ```
 
-### B. Retrieve Historical Session (`GET /sessions/{id}`)
-```bash
-curl "http://localhost:8000/sessions/<SESSION_ID>"
+**Sample Response**:
+```json
+{
+  "session_id": "8fa19e83-74b2-4d9f-a2e6-c148bb0174ad",
+  "status": "success",
+  "answer": "Analysis complete. Total revenue and units sold were computed across all categories. Electronics generated the highest total revenue ($14,508.62), followed by Clothing ($7,767.26).",
+  "artifact_id": "c71e24fb-81df-4b95-a50d-d42199f7dca1",
+  "artifact_url": "/artifacts/c71e24fb-81df-4b95-a50d-d42199f7dca1",
+  "artifacts": [
+    {
+      "id": "c71e24fb-81df-4b95-a50d-d42199f7dca1",
+      "file_name": "output_plot.html",
+      "url": "/artifacts/c71e24fb-81df-4b95-a50d-d42199f7dca1"
+    }
+  ],
+  "trace": [
+    {
+      "step_index": 0,
+      "thought": "1. Load dataset.csv. 2. Group by Category and compute sum of Revenue and Units_Sold. 3. Output interactive bar chart to output_plot.html.",
+      "code": "import pandas as pd\nimport plotly.express as px\n...",
+      "stdout": "Category Revenue Summary:\nElectronics: 14508.62\n...",
+      "stderr": null,
+      "duration_seconds": 1.42
+    }
+  ]
+}
 ```
 
-### C. Retrieve Plotly HTML Visualization (`GET /artifacts/{id}`)
+### Workflow 2: Progressive Drill-Down (Resume Existing Session)
+Ask a follow-up question in the same conversation without re-uploading the dataset:
+
 ```bash
-curl "http://localhost:8000/artifacts/<ARTIFACT_ID>"
+curl -X POST "http://localhost:8000/analyze" \
+  -F "session_id=8fa19e83-74b2-4d9f-a2e6-c148bb0174ad" \
+  -F "question=Now isolate the Electronics category and identify which individual transaction had the highest unit price."
 ```
-Or open the URL directly in any web browser to interact with the chart.
+
+### Workflow 3: Retrieve Full Session Audit Trail
+Retrieve the complete conversational record, full reasoning trace, and generated artifacts:
+
+```bash
+curl -s http://localhost:8000/sessions/8fa19e83-74b2-4d9f-a2e6-c148bb0174ad
+```
+
+### Workflow 4: Inspect Generated Plotly Visualization
+Fetch and view the generated interactive Plotly HTML chart in your browser:
+```bash
+# Terminal download:
+curl -s http://localhost:8000/artifacts/c71e24fb-81df-4b95-a50d-d42199f7dca1 -o plot.html
+
+# Or open directly in browser:
+# Navigate to http://localhost:8000/artifacts/c71e24fb-81df-4b95-a50d-d42199f7dca1
+```
 
 ---
 
-## 5. Example HTML Plot Output Deliverable
+## 7. Offline Prompt Optimization (DSPy GEPA)
 
-As required by deliverable **#3**, a pre-generated standalone Plotly HTML visualization is available in the repository at:
-👉 [`examples/example_plot.html`](examples/example_plot.html)
+To reproduce the prompt evolution process or re-train the DSPy signatures on a customized dataset:
 
-Open it directly in any browser to inspect the interactive features (tooltips, zoom, pan, hover states).
-
----
-
-## 6. Run the DSPy + GEPA Prompt Optimization Benchmark (Stretch Bonus)
-
-To evaluate and optimize the agent's reasoning prompts using **DSPy 3.4** and **GEPA (Generalized Evolutionary Prompt Adaptation)**:
-
-### A. Run Deterministic Mock Benchmark (Fast / CI / Offline):
 ```bash
-python -m data_agent.optimization.optimizer --mock
-```
-*Expected output*: Evaluates baseline prompts vs GEPA-evolved prompts on the 5 curated dev set questions, demonstrating a performance jump from **65.0%** to **100.0%** (+53.9% relative improvement) and saving the benchmark report.
+# Ensure GEMINI_API_KEY is exported
+export GEMINI_API_KEY="your_api_key_here"
 
-### B. Run Live Prompt Optimization with Gemini:
-```bash
-python -m data_agent.optimization.optimizer --max-calls 10
+# Execute the evolutionary prompt optimizer CLI
+python -m data_agent.optimization.optimizer --output examples/gepa_optimization_report.json
 ```
 
-### C. Run the Dedicated DSPy & GEPA Test Suite:
-```bash
-python -m pytest tests/unit/test_dspy_modules.py tests/integration/test_dspy_optimization.py -v
-```
-
-### D. Inspect Pre-computed Benchmark Deliverable:
-👉 [`examples/gepa_optimization_report.json`](examples/gepa_optimization_report.json)
+The script will:
+1. Load the development set questions from `data_agent/optimization/dev_set.py`.
+2. Measure zero-shot baseline performance across the sandbox execution and Plotly generation metric.
+3. Apply evolutionary mutations to refine the planning, code generation, and reflection prompts.
+4. Export the quantitative comparison report to the specified JSON path.
