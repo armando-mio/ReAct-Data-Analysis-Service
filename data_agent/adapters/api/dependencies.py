@@ -36,7 +36,7 @@ class Container:
         self.uploads_dir = os.getenv("UPLOADS_DIR", "storage/uploads")
         self.sandbox_timeout = float(os.getenv("SANDBOX_TIMEOUT", "15.0"))
         self.gemini_api_key = gemini_api_key if gemini_api_key is not None else os.getenv("GEMINI_API_KEY")
-        self.gemini_model = gemini_model or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        self.gemini_model = gemini_model if gemini_model is not None else os.getenv("GEMINI_MODEL")
 
         # Port adapters
         self.storage: IArtifactStorage = LocalArtifactStorage(base_directory=self.artifacts_dir)
@@ -49,6 +49,8 @@ class Container:
         else:
             if not self.gemini_api_key or not self.gemini_api_key.strip():
                 raise ValueError("GEMINI_API_KEY environment variable is required")
+            if not self.gemini_model or not self.gemini_model.strip():
+                raise ValueError("GEMINI_MODEL environment variable is required")
             self.llm_client = GeminiLLMAdapter(
                 api_key=self.gemini_api_key,
                 model_name=self.gemini_model,

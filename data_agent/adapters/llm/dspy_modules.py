@@ -184,8 +184,8 @@ class DSPyLLMAdapter(ILLMClient):
         elif not getattr(dspy.settings, "lm", None):
             # Attempt default Gemini LM if configured in environment
             api_key = os.getenv("GEMINI_API_KEY")
-            model_name = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
-            if api_key:
+            model_name = os.getenv("GEMINI_MODEL")
+            if api_key and model_name:
                 try:
                     configured_lm = dspy.LM(f"gemini/{model_name}", api_key=api_key)
                     dspy.settings.configure(lm=configured_lm)

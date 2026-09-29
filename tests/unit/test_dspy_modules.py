@@ -154,4 +154,15 @@ def test_container_requires_api_key(monkeypatch):
 
     monkeypatch.setenv("GEMINI_API_KEY", "")
     with pytest.raises(ValueError, match="GEMINI_API_KEY environment variable is required"):
-        Container(gemini_api_key="")
+        Container(gemini_api_key="", gemini_model="test-model")
+
+
+def test_container_requires_model_name(monkeypatch):
+    """Verify Container raises ValueError when GEMINI_MODEL is missing or empty."""
+    from data_agent.adapters.api.dependencies import Container
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setenv("GEMINI_MODEL", "")
+    with pytest.raises(ValueError, match="GEMINI_MODEL environment variable is required"):
+        Container(gemini_api_key="test-key", gemini_model="")
+

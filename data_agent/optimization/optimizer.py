@@ -124,12 +124,14 @@ class PromptOptimizationRunner:
         self.use_mock = use_mock
         self.sandbox_runner = ProcessSandboxRunner(default_timeout=sandbox_timeout)
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.model_name = model_name or os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+        self.model_name = model_name or os.getenv("GEMINI_MODEL")
 
         if self.use_mock or not self.api_key:
             self.lm = MockOptimizingLM(mode="baseline")
             dspy.settings.configure(lm=self.lm)
         else:
+            if not self.model_name:
+                raise ValueError("GEMINI_MODEL environment variable or model_name argument is required")
             provider_model = f"gemini/{self.model_name}"
             self.lm = dspy.LM(provider_model, api_key=self.api_key)
             dspy.settings.configure(lm=self.lm)
@@ -344,6 +346,7 @@ def main():
     """CLI entrypoint for running DSPy + GEPA prompt optimization."""
     parser = argparse.ArgumentParser(description="Run DSPy + GEPA Prompt Optimization for ReAct Data Agent")
     parser.add_argument("--mock", action="store_true", help="Run with deterministic Mock LM for CI/offline testing")
+    parser.add_argument("--model", type=str, default=None, help="Gemini model name (reads from GEMINI_MODEL env var if not set)")
     parser.add_argument("--optimizer", choices=["gepa", "miprov2", "bootstrap"], default="gepa", help="DSPy optimizer (default: gepa - recommended)")
     parser.add_argument("--max-calls", type=int, default=10, help="Maximum GEPA metric calls (default: 10)")
     parser.add_argument("--dataset", type=str, default="data/sample_sales.csv", help="Path to evaluation dataset")
@@ -351,7 +354,7 @@ def main():
     args = parser.parse_args()
 
     logger.info(f"Starting DSPy Prompt Optimization (Optimizer: {args.optimizer.upper()}, Mock: {args.mock})...")
-    runner = PromptOptimizationRunner(use_mock=args.mock)
+    runner = PromptOptimizationRunner(use_mock=args.mock, model_name=args.model)
     report = runner.run_optimization(
         max_metric_calls=args.max_calls,
         dataset_path=args.dataset,
