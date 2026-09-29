@@ -28,7 +28,7 @@ class CodeGenerationSignature(dspy.Signature):
     The script must load the dataset from 'dataset.csv' (or path provided in scope),
     compute all requested aggregations and metrics, print clear insights to stdout,
     and create an interactive Plotly visualization saved to an HTML file via fig.write_html('output.html', include_plotlyjs='cdn').
-    REGOLA TASSATIVA: NON chiamare MAI fig.show(). Salva sempre la figura su disco in formato HTML interattivo con fig.write_html('output.html', include_plotlyjs='cdn').
+    STRICT RULE: NEVER call fig.show(). Always save the figure to disk as an interactive HTML file via fig.write_html('output.html', include_plotlyjs='cdn').
     Never use plt.show() or input(). Avoid syntax errors and handle missing data gracefully.
     """
 
@@ -303,7 +303,7 @@ class DSPyReActAgent(dspy.Module):
         def execute_analysis_code(code: str) -> str:
             """Execute Python analysis script in the isolated sandbox.
             Reads data from 'dataset.csv' and creates an interactive Plotly HTML visualization.
-            REGOLA TASSATIVA: NON chiamare MAI fig.show(). Salva sempre con fig.write_html('output.html', include_plotlyjs='cdn').
+            STRICT RULE: NEVER call fig.show(). Always save with fig.write_html('output.html', include_plotlyjs='cdn').
             Returns stdout, errors, and generated files.
             """
             from data_agent.adapters.sandbox.process_sandbox import ProcessSandboxRunner

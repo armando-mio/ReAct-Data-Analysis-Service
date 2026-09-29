@@ -133,7 +133,7 @@ class GeminiLLMAdapter(ILLMClient):
             "2. Print key analytical answers and summary statistics to stdout using print().\n"
             "3. MANDATORY AUTONOMOUS PLOTLY VISUALIZATION: You MUST ALWAYS create an insightful, interactive Plotly visualization (e.g. using plotly.express as px or plotly.graph_objects as go) that visually answers or enriches the user's question. Save it to the current directory with:\n"
             "   fig.write_html('output_plot.html', include_plotlyjs='cdn')\n"
-            "   REGOLA TASSATIVA: NON chiamare MAI fig.show(). Salva sempre la figura su disco in formato HTML interattivo con fig.write_html('output.html', include_plotlyjs='cdn').\n"
+            "   STRICT RULE: NEVER call fig.show(). Always save the figure to disk as interactive HTML via fig.write_html('output_plot.html', include_plotlyjs='cdn').\n"
             "4. Do NOT attempt any external network requests or internet access (it is blocked by security policy).\n"
             "5. Return ONLY pure, executable Python code inside standard ```python ... ``` markdown blocks.\n\n"
             f"--- DATASET PREVIEW ---\n{dataset_preview}\n\n"
