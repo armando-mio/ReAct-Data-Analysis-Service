@@ -10,15 +10,21 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.6-flash}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-lite}
       - DATABASE_URL=sqlite:////app/storage/data_agent.db
-
       - ARTIFACTS_DIR=/app/storage/artifacts
       - UPLOADS_DIR=/app/storage/uploads
       - SANDBOX_TIMEOUT=15.0
     volumes:
       - ./storage:/app/storage
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     deploy:
       resources:
         limits:

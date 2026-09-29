@@ -21,11 +21,13 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Create non-root application user for secure sandbox execution
 RUN useradd -u 1000 -m -s /bin/bash appuser && \
-    mkdir -p /app/storage/artifacts /app/storage/uploads && \
+    mkdir -p /app/storage/artifacts /app/storage/uploads /app/data && \
     chown -R appuser:appuser /app
 
-# Copy application codebase
+# Copy application codebase and sample data
 COPY --chown=appuser:appuser data_agent /app/data_agent
+COPY --chown=appuser:appuser data /app/data
+COPY --chown=appuser:appuser examples /app/examples
 
 USER appuser
 
