@@ -22,12 +22,20 @@ class TraceStepSummary(BaseModel):
     duration_seconds: float = Field(default=0.0)
 
 
+class AnalyzeRequest(BaseModel):
+    """Request model for analytical queries."""
+    question: str
+    session_id: Optional[str] = None
+
+
 class AnalyzeResponse(BaseModel):
     """Response model for POST /analyze."""
     session_id: str
     answer: str
     status: str = "success"
     error: Optional[str] = None
+    artifact_id: Optional[str] = None
+    artifact_url: Optional[str] = None
     artifacts: List[ArtifactSummary] = Field(default_factory=list)
     trace: List[TraceStepSummary] = Field(default_factory=list)
 

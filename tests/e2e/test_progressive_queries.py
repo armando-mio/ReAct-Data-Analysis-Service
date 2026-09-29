@@ -68,3 +68,44 @@ def test_progressive_query_execution(test_app: TestClient, query_idx: int, quest
     artifact_res = test_app.get(artifact["url"])
     assert artifact_res.status_code == 200
     assert "text/html" in artifact_res.headers.get("content-type", "")
+
+
+def test_session_resuming_multi_turn_continuity(test_app: TestClient):
+    """Verify that submitting an existing session_id resumes conversation context across turns."""
+    csv_path = Path("data/sample_sales.csv")
+    csv_bytes = csv_path.read_bytes()
+
+    # Turn 1: Initial upload and analytical query
+    files = {"file": ("sample_sales.csv", io.BytesIO(csv_bytes), "text/csv")}
+    turn1_res = test_app.post(
+        "/analyze",
+        data={"question": "What is the total revenue for the Electronics category?"},
+        files=files,
+    )
+    assert turn1_res.status_code == 200
+    payload1 = turn1_res.json()
+    session_id = payload1["session_id"]
+    assert session_id is not None
+
+    # Turn 2: Follow-up question using the SAME session_id without re-uploading the file
+    turn2_res = test_app.post(
+        "/analyze",
+        data={
+            "question": "Now compare that previous result to the Clothing category.",
+            "session_id": session_id,
+        },
+    )
+    assert turn2_res.status_code == 200
+    payload2 = turn2_res.json()
+    assert payload2["session_id"] == session_id
+    assert payload2["status"] == "success"
+
+    # Turn 3: Verify the full session contains both turns (2 user messages + 2 assistant messages)
+    session_res = test_app.get(f"/sessions/{session_id}")
+    assert session_res.status_code == 200
+    session_data = session_res.json()
+    assert len(session_data["messages"]) >= 4
+    roles = [m["role"] for m in session_data["messages"]]
+    assert roles.count("user") >= 2
+    assert roles.count("assistant") >= 2
+

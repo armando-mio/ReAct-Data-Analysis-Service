@@ -74,6 +74,8 @@ async def analyze_data(
         answer=result.answer,
         status=result.status,
         error=result.error,
+        artifact_id=result.artifact_id,
+        artifact_url=result.artifact_url,
         artifacts=[ArtifactSummary(**art) for art in result.artifacts],
         trace=[TraceStepSummary(**t) for t in result.trace],
     )

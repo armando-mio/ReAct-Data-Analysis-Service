@@ -23,6 +23,8 @@ class AnalysisResult:
     answer: str
     status: str = "success"
     error: Optional[str] = None
+    artifact_id: Optional[str] = None
+    artifact_url: Optional[str] = None
     artifacts: List[Dict[str, str]] = field(default_factory=list)
     trace: List[Dict[str, Any]] = field(default_factory=list)
 
@@ -64,21 +66,20 @@ class AnalyzeDataUseCase:
         filename: Optional[str] = None,
         session_id: Optional[str] = None,
     ) -> AnalysisResult:
-        """Execute the end-to-end ReAct data analysis pipeline."""
+        """Execute the end-to-end ReAct data analysis pipeline with conversational resuming."""
         if not question or not question.strip():
             raise ValueError("Question cannot be empty.")
 
-        # Resolve or create Session
+        # 1. Resolve or create Session (support resuming previous conversations)
         session: Optional[Session] = None
         if session_id:
             session = self.repository.get_session(session_id)
             if not session:
-                # If session_id provided but not found, initialize new session with that ID
                 session = Session(id=session_id)
         else:
             session = Session(id=str(uuid.uuid4()))
 
-        # Handle dataset upload or retrieval
+        # 2. Handle dataset upload or retrieval from existing session
         if file_bytes and filename:
             session_upload_dir = self.uploads_dir / session.id
             session_upload_dir.mkdir(parents=True, exist_ok=True)
@@ -91,29 +92,38 @@ class AnalyzeDataUseCase:
                 "No dataset available. Please upload a CSV dataset to analyze or specify an existing session."
             )
 
-        # Generate dataset preview
-        dataset_preview = self._extract_dataset_preview(session.dataset_path)
+        # 3. Generate dataset preview and incorporate conversation history if resuming
+        raw_dataset_preview = self._extract_dataset_preview(session.dataset_path)
 
-        # Log User Message
+        conversation_history = ""
+        if session.messages:
+            prev_turns = [f"{m.role.value.capitalize()}: {m.content}" for m in session.messages]
+            if prev_turns:
+                conversation_history = "Conversation History (Prior Turns):\n" + "\n".join(prev_turns[-6:]) + "\n\n"
+
+        full_preview = conversation_history + raw_dataset_preview
+
+        # 4. Log User Message in current session
         session.add_message(role=MessageRole.USER, content=question)
 
-        # Build and invoke ReAct StateGraph
+        # 5. Build and invoke ReAct StateGraph
         graph_builder = ReActGraphBuilder(
             llm_client=self.llm_client,
             sandbox_runner=self.sandbox_runner,
         )
         graph = graph_builder.build()
 
+        existing_artifacts = list(session.artifacts)
         initial_state = {
             "session_id": session.id,
             "question": question,
             "dataset_path": session.dataset_path,
-            "dataset_preview": dataset_preview,
+            "dataset_preview": full_preview,
             "iteration": 0,
             "max_iterations": 4,
             "trace": [],
-            "artifact_ids": [],
-            "artifacts": [],
+            "artifact_ids": [a.id for a in existing_artifacts],
+            "artifacts": existing_artifacts,
             "current_plan": None,
             "current_code": None,
             "execution_output": None,
@@ -143,7 +153,7 @@ class AnalyzeDataUseCase:
                 "trace": session.traces,
             }
 
-        # Ingest and persist generated HTML artifacts
+        # 6. Ingest and persist generated HTML artifacts (optional: empty list if none generated)
         generated_html_files = final_state.get("generated_html_files", [])
         artifact_responses: List[Dict[str, str]] = []
 
@@ -160,7 +170,10 @@ class AnalyzeDataUseCase:
                 "url": f"/artifacts/{artifact.id}",
             })
 
-        # Persist traces
+        primary_artifact_id = artifact_responses[0]["id"] if artifact_responses else None
+        primary_artifact_url = artifact_responses[0]["url"] if artifact_responses else None
+
+        # 7. Persist traces
         new_traces: List[TraceStep] = final_state.get("trace", [])
         trace_responses: List[Dict[str, Any]] = []
         for step in new_traces:
@@ -174,10 +187,10 @@ class AnalyzeDataUseCase:
                 "duration_seconds": step.duration_seconds,
             })
 
-        # Save assistant answer message
+        # 8. Save assistant answer message
         session.add_message(role=MessageRole.ASSISTANT, content=final_answer)
 
-        # Update session in repository
+        # 9. Update session in repository
         self.repository.save_session(session)
 
         return AnalysisResult(
@@ -185,6 +198,8 @@ class AnalyzeDataUseCase:
             answer=final_answer,
             status=status_str,
             error=error_msg,
+            artifact_id=primary_artifact_id,
+            artifact_url=primary_artifact_url,
             artifacts=artifact_responses,
             trace=trace_responses,
         )

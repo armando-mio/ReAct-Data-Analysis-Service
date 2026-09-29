@@ -1,16 +1,18 @@
 """DSPy reasoning signatures, modules, and adapter for prompt optimization."""
 
 import os
+from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
 import dspy
 from data_agent.core.entities import Artifact, TraceStep
 from data_agent.core.exceptions import LLMExecutionError
+from data_agent.core.logging import get_logger
 from data_agent.ports.llm_port import ILLMClient
-
-
 from data_agent.core.utils import clean_code_snippet, extract_python_code
+
+logger = get_logger("data_agent.dspy")
 
 
 class PlanSignature(dspy.Signature):
@@ -72,14 +74,21 @@ class DataAnalysisReActModule(dspy.Module):
         self.summarizer = dspy.Predict(SummarizeSignature)
 
         # Decoupled runtime loading: load optimized prompt instructions if serialized file exists
+        base_dir = Path(__file__).resolve().parents[3]
+        default_prompts_file = base_dir / "examples" / "optimized_prompts.json"
+        alt_prompts_file = Path(__file__).resolve().parents[2] / "examples" / "optimized_prompts.json"
+
         search_paths = [
-            optimized_prompts_path,
-            os.getenv("OPTIMIZED_PROMPTS_PATH"),
-            "examples/optimized_prompts.json",
-            "storage/optimized_prompts.json",
+            Path(optimized_prompts_path) if optimized_prompts_path else None,
+            Path(os.getenv("OPTIMIZED_PROMPTS_PATH")) if os.getenv("OPTIMIZED_PROMPTS_PATH") else None,
+            default_prompts_file,
+            alt_prompts_file,
+            Path("examples/optimized_prompts.json").resolve(),
+            Path("storage/optimized_prompts.json").resolve(),
         ]
+        loaded = False
         for path_candidate in search_paths:
-            if path_candidate and os.path.isfile(path_candidate):
+            if path_candidate and path_candidate.is_file():
                 try:
                     import json
                     with open(path_candidate, "r", encoding="utf-8") as f:
@@ -88,9 +97,13 @@ class DataAnalysisReActModule(dspy.Module):
                         self.planner.predict.signature = self.planner.predict.signature.with_instructions(prompts["planner.predict"])
                     if "coder.predict" in prompts:
                         self.coder.predict.signature = self.coder.predict.signature.with_instructions(prompts["coder.predict"])
+                    loaded = True
+                    logger.info(f"Loaded optimized DSPy prompts from {path_candidate}")
                     break
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.warning(f"Could not load prompts from {path_candidate}: {exc}. Using default signatures.")
+        if not loaded:
+            logger.info("Using default DSPy reasoning signatures.")
 
     def forward(
         self,
