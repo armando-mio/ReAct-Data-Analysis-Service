@@ -8,7 +8,9 @@ An enterprise-grade, robust, and extensible autonomous data analysis agent built
 
 The service enforces strict architectural boundaries where dependencies flow inward toward pure domain entities and interfaces:
 
-$$\text{Adapters (Infrastructure / I/O)} \longrightarrow \text{Use Cases (Application Orchestration)} \longrightarrow \text{Ports (Interfaces / Protocols)} \longrightarrow \text{Domain Core (Entities \& Exceptions)}$$
+$$
+\text{Adapters (Infrastructure / I/O)} \longrightarrow \text{Use Cases (Application Orchestration)} \longrightarrow \text{Ports (Interfaces / Protocols)} \longrightarrow \text{Domain Core (Entities and Exceptions)}
+$$
 
 Neither the domain models nor the application use cases depend on external web frameworks (FastAPI), database engines (SQLite), or concrete cloud vendor SDKs (Google GenAI).
 
@@ -20,7 +22,7 @@ Neither the domain models nor the application use cases depend on external web f
 |  +--------------------------------------------------------------------------------------------+  |
 |  |  FastAPI Application & HTTP Routers (data_agent/adapters/api/)                             |  |
 |  |    - POST /analyze                 (Multi-turn tabular query & CSV upload)                 |  |
-|  |    - GET  /sessions/{session_id}   (Full session history, messages, and reasoning traces)   |  |
+|  |    - GET  /sessions/{session_id}   (Full session history, messages, and reasoning traces)  |  |
 |  |    - GET  /artifacts/{artifact_id} (Standalone interactive Plotly HTML stream)             |  |
 |  +--------------------------------------------------------------------------------------------+  |
 +==================================================================================================+
@@ -57,7 +59,7 @@ Neither the domain models nor the application use cases depend on external web f
 |  +---------------------+  +---------------------+  +--------------------+  +------------------+  |
 |  | GeminiLLMAdapter    |  | ProcessSandboxRunner|  | SQLiteSessionRepo  |  | LocalArtifact-   |  |
 |  | (Google Gemini API) |  |  + NetworkGuard     |  |   (WAL Mode)       |  |     Storage      |  |
-|  | DSPyLLMAdapter      |  |  + Process Group   |  | (storage/          |  | (storage/        |  |
+|  | DSPyLLMAdapter      |  |  + Process Group    |  | (storage/          |  | (storage/        |  |
 |  | (Optimized Prompts) |  |    Termination      |  |  data_agent.db)    |  |  artifacts/)     |  |
 |  +---------------------+  +---------------------+  +--------------------+  +------------------+  |
 +==================================================================================================+
